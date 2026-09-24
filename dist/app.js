@@ -1,14 +1,14 @@
 import { Catalog, calculate, key, fromKey } from './planner.js?v=6';
 import { groupItemsByMod, renderRecipeDiagram, sortRecipeMethods } from './recipe-view.js?v=8';
 import { createItemSearch } from './search.js?v=1';
-import { capturePage, createNavigation } from './navigation.js?v=2';
+import { capturePage, createNavigation } from './navigation.js?v=3';
 import { createBuildList } from './build-list.js?v=1';
 import { createFavorites, favoritesStorageKey, renderFavoriteButton } from './favorites.js?v=1';
 
 const $ = selector => document.querySelector(selector);
 const html = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = n => Number(n).toLocaleString();
-const state = { catalog: null, ref: null, quantity: 1, tab: 'plan', indexTab: 'all', query: '', craftable: false, itemLimit: 80, recipeLimit: 40, process: '', recipes: {}, members: {}, inventory: {}, result: null, target: null, layouts: {}, modOpen: {}, modLimits: {}, modGroups: [], expandedNodes: new Set(['0']) };
+const state = { catalog: null, ref: null, quantity: 1, tab: 'plan', indexTab: 'all', query: '', indexQueries: {all: '', favorites: ''}, craftable: false, itemLimit: 80, recipeLimit: 40, process: '', recipes: {}, members: {}, inventory: {}, result: null, target: null, layouts: {}, modOpen: {}, modLimits: {}, modGroups: [], expandedNodes: new Set(['0']) };
 const names = stack => state.catalog.item(stack.ref).name;
 const amount = stack => fmt(stack.count) + (stack.ref.startsWith('fluid:') ? ' mB' : '');
 const isGroup = ref => ref.startsWith('ore:') || ref.startsWith('alternatives:') || ref.endsWith(':*');
@@ -42,7 +42,9 @@ function toggleFavorite(ref) {
   $('#live-status').textContent=`${state.catalog.item(ref).name} ${favorites.has(ref)?'added to':'removed from'} favorites.`;
 }
 function switchIndexTab(tab) {
-  state.indexTab=tab;state.modOpen={};state.modLimits={};
+  state.indexQueries[state.indexTab]=state.query;
+  state.indexTab=tab;state.query=state.indexQueries[tab] || '';
+  $('#search').value=state.query;state.modOpen={};state.modLimits={};
   renderIndex();$('#item-list').scrollTop=0;checkpoint();
 }
 const pageSnapshot = () => capturePage(state, {scrollY:window.scrollY,indexScroll:$('#item-list').scrollTop});
@@ -69,7 +71,8 @@ function restorePage(page) {
   if(scrollTimer) {clearTimeout(scrollTimer);scrollTimer=0;}
   restoringPage=true;
   const {expandedNodes,scrollY,indexScroll,...view}=page;
-  Object.assign(state,view,{indexTab:page.indexTab||'all',expandedNodes:new Set(expandedNodes)});
+  Object.assign(state,view,{indexTab:page.indexTab||'all',indexQueries:{all:page.query||'',favorites:'',...page.indexQueries},expandedNodes:new Set(expandedNodes)});
+  state.query=state.indexQueries[state.indexTab];
   if($('#data-dialog').open) $('#data-dialog').close();
   $('#search').value=state.query;
   $('#has-recipe').checked=state.craftable;
@@ -118,6 +121,7 @@ function renderIndex() {
   state.modGroups=groupItemsByMod(items);
   $('#result-count').textContent=fmt(items.length);
   $('#index-title').textContent=saved?'Favorites':'Item index';
+  $('#search').placeholder=saved?'Search favorites…':'Search items or IDs…';
   document.querySelectorAll('[data-index-tab]').forEach(button=>{
     const selected=button.dataset.indexTab===state.indexTab;
     button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;
@@ -291,7 +295,7 @@ document.addEventListener('click', event => {
 });
 document.addEventListener('input', event => {
   if (!state.catalog) return;
-  if (event.target.id === 'search') { state.query = event.target.value; state.modOpen={}; state.modLimits={}; state.itemLimit = 80; renderIndex(); }
+  if (event.target.id === 'search') { state.query = event.target.value; state.indexQueries[state.indexTab]=state.query; state.modOpen={}; state.modLimits={}; state.itemLimit = 80; renderIndex(); }
   if (event.target.id === 'inventory-search') {
     const value = event.target.value.trim();
     $('#inventory-matches').innerHTML = value ? matches(value).slice(0, 8).map(item => `<button class="inventory-match" data-add-owned="${html(item.ref)}">${html(item.name)}</button>`).join('') : '';

@@ -27,6 +27,7 @@ test('Back and Forward restore calculator views before leaving the site',()=>{
   nav.visit(capturePage(view('controller')),'ME Controller');
   const prior=view('controller','recipes');
   prior.quantity=12;prior.query='ME cont';prior.craftable=true;prior.process='Crafting';
+  prior.indexTab='all';prior.indexQueries={all:'ME cont',favorites:'furnace'};
   prior.recipes.controller='chosen-recipe';prior.members['ore:ingotIron']='iron';
   prior.expandedNodes.add('0.2');prior.modOpen['Applied Energistics']=true;
   nav.visit(capturePage(prior),'ME Controller recipes');
@@ -35,6 +36,7 @@ test('Back and Forward restore calculator views before leaving the site',()=>{
   assert.equal(nav.backLabel,'ME Controller recipes');
   assert.equal(nav.back(),true);
   assert.deepEqual(restored,capturePage(prior,{scrollY:450,indexScroll:210}));
+  assert.deepEqual(restored.indexQueries,{all:'ME cont',favorites:'furnace'});
   assert.equal(nav.backLabel,'ME Controller');
   history.forward();assert.equal(restored.ref,'iron');
   history.back();history.back();assert.equal(restored.ref,'controller');assert.equal(restored.tab,'plan');
@@ -61,8 +63,11 @@ test('fresh visits open the index, reloads restore owned history, and new select
 test('page snapshots are isolated and omit the large catalog and shared inventory',()=>{
   const state=view('fence');state.inventory={iron:9};state.catalog={large:true};
   state.recipes.fence='recipe-a';
+  state.indexQueries={all:'controller',favorites:'saw'};
   const page=capturePage(state);
   state.recipes.fence='recipe-b';state.expandedNodes.add('0.1');
+  state.indexQueries.favorites='quartz';
   assert.equal(page.recipes.fence,'recipe-a');assert.deepEqual(page.expandedNodes,['0']);
+  assert.deepEqual(page.indexQueries,{all:'controller',favorites:'saw'});
   assert.ok(!('inventory' in page)&&!('catalog' in page));
 });

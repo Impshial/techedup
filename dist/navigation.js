@@ -3,7 +3,7 @@ const owned = entry => entry?.type === marker && entry.view && typeof entry.labe
 
 // Keep only page state in history, never the catalog or calculated recipe tree.
 export function capturePage(state, scroll = {}) {
-  const fields = ['ref', 'target', 'quantity', 'tab', 'indexTab', 'query', 'craftable', 'recipeLimit', 'process', 'recipes', 'members', 'modOpen', 'modLimits'];
+  const fields = ['ref', 'target', 'quantity', 'tab', 'indexTab', 'query', 'indexQueries', 'craftable', 'recipeLimit', 'process', 'recipes', 'members', 'modOpen', 'modLimits'];
   return structuredClone({
     ...Object.fromEntries(fields.map(field => [field, state[field]])),
     expandedNodes: [...state.expandedNodes],
