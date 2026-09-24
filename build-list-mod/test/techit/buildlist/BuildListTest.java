@@ -33,6 +33,38 @@ public final class BuildListTest {
         check(Arrays.equals(original,Files.readAllBytes(file.toPath())),"original export never modified");
         File renamed=new File(store.directory,"renamed.techit.json");Files.write(renamed.toPath(),original);
         check(reopened.load(renamed).checked.contains(fluid.key),"renaming a list preserves progress");
+        BuildListSession session=new BuildListSession(store);
+        check(session.build==null,"multiple exports require a deliberate list selection");
+        session.open(file);
+        BuildListSession resumed=new BuildListSession(reopened);
+        check(resumed.selected.equals(file)&&resumed.build.checked.contains(fluid.key),"last selected list and checks survive restart");
+        check(!BuildListStore.completed(resumed.build),"partial materials do not mark the master list complete");
+        reopened.setCompleted(resumed.build,true);
+        check(BuildListStore.completed(reopened.load(file)),"master checkbox marks all materials and saves once");
+        for(BuildListStore.Row plan:resumed.build.plans)check(!resumed.build.checked.contains(plan.key),"master completion leaves To build items informational");
+        reopened.toggle(resumed.build,resumed.build.materials.get(0));
+        check(!BuildListStore.completed(resumed.build),"unchecking one material clears master completion");
+        reopened.setCompleted(resumed.build,false);
+        check(reopened.load(file).checked.isEmpty(),"master uncheck clears material progress");
+        resumed.toggleCompleted(renamed);
+        check(BuildListStore.completed(resumed.build),"checking a duplicate list also updates the active popup's shared progress");
+        BuildListStore.write(new File(store.progressDirectory,"selection.json"),"{\"file\":\"../outside.techit.json\"}");
+        check(new BuildListSession(store).build==null,"invalid saved selection cannot escape the export directory");
+        BuildListStore onlyStore=new BuildListStore(new File(root,"single"));
+        Files.copy(file.toPath(),new File(onlyStore.directory,file.getName()).toPath());
+        check(new BuildListSession(onlyStore).build!=null,"one export opens directly in the compact checklist");
+        for(int[] size:new int[][]{{1920,1080},{854,480},{427,240},{320,240},{220,160}}) {
+            ChecklistLayout layout=new ChecklistLayout(size[0],size[1]);
+            check(layout.left>=0&&layout.top>=0&&layout.left+layout.width==size[0]-6,"popup stays docked within the right edge");
+            check(layout.top+layout.height==size[1]-6,"popup expands upward from the bottom right");
+            check(layout.badgeLeft+layout.badgeWidth==size[0]-6&&layout.badgeTop+22==size[1]-6,"minimized control keeps its screen margin");
+            check(layout.rowsBottom<=layout.top+layout.height-37,"rows do not overlap footer controls");
+            int offset=layout.clampOffset(1000,35);
+            check(offset+layout.visibleRows==35,"scroll reaches the last material");
+            check(layout.rowAt(layout.left+8,layout.rowsTop,offset,35)==offset,"visible hit target maps to its scrolled material");
+            check(layout.rowAt(layout.left+8,layout.rowsBottom,offset,35)==-1,"footer cannot toggle a material");
+            check(layout.clampOffset(9,0)==0&&layout.clampOffset(-9,35)==0,"empty and negative scrolls are bounded");
+        }
         String text=new String(original,"UTF-8");
         expectRejected(store,file,text.replace("\"version\": 1","\"version\": 99"),"unknown version");
         expectRejected(store,file,text.replace("\"minecraftVersion\": \"1.6.4\"","\"minecraftVersion\": \"1.7.10\""),"different game version");
@@ -44,7 +76,11 @@ public final class BuildListTest {
         check(((NBTTagCompound)nbt.func_74761_m("list").func_74743_b(0)).func_74765_d("id")==16,"compound lists restore correctly");
         Class.forName("techit.buildlist.BuildListScreen",false,BuildListTest.class.getClassLoader());
         Class.forName("techit.buildlist.BuildListTabs",false,BuildListTest.class.getClassLoader());
-        System.out.println("PASS: automatic folders, real calculator export, numeric IDs, microblock NBT, RF states, fluids, persistent checkboxes, rename, validation, long integers, NBT lists and GUI linkage.");
+        Class.forName("techit.buildlist.BuildListPopup",false,BuildListTest.class.getClassLoader());
+        java.lang.reflect.Constructor<BuildListClient> constructor=BuildListClient.class.getDeclaredConstructor();constructor.setAccessible(true);
+        net.minecraft.client.settings.KeyBinding[] keys=constructor.newInstance().getKeyBindings();
+        check(keys.length==1&&keys[0].field_74512_d==23,"only I is registered; J stays free for JourneyMap");
+        System.out.println("PASS: automatic folders, calculator export, NBT, fluids, persistent checks, shared selection, master completion, popup bounds/scrolling, validation and GUI linkage.");
     }
     static void expectRejected(BuildListStore store,File file,String text,String message)throws Exception {
         Files.write(file.toPath(),text.getBytes("UTF-8"));boolean rejected=false;

@@ -1,3 +1,18 @@
+// Windows-safe names reflect the target machines/items, not their ingredient totals.
+function exportFilename(plans) {
+  const label=plans.map(plan=>(plan.quantity>1?`${plan.quantity}x `:'')+plan.name).join(' + ') || 'Empty build list';
+  let name=label.replace(/[<>:"/\\|?*\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim().replace(/[. ]+$/g,'');
+  if(!name)name='Build list';
+  if(/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(name))name='TechIt '+name;
+  if(name.length>160) {
+    // Different large plans should not collapse to the same truncated filename.
+    const identity=JSON.stringify(plans.map(({ref,quantity})=>({ref,quantity})));
+    let hash=2166136261;for(const char of identity)hash=Math.imul(hash^char.charCodeAt(0),16777619)>>>0;
+    name=name.slice(0,140).replace(/[. ]+$/g,'')+' - '+hash.toString(16).padStart(8,'0');
+  }
+  return name+'.techit.json';
+}
+
 // The GUI mod reads this versioned format directly; PNGs and recipes stay on the site.
 export function minecraftBuildListExport(entries, materials, nameFor, scope, catalog) {
   if (!catalog) throw new Error('Minecraft export requires the item catalog.');
@@ -25,6 +40,6 @@ export function minecraftBuildListExport(entries, materials, nameFor, scope, cat
     plans:entries.map(entry=>record(entry.target,entry.quantity)),
     materials:materials.map(material=>({...record(material.stack,material.count),reasons:[...(material.reasons || [])]}))
       .sort((a,b)=>a.name.localeCompare(b.name)||a.ref.localeCompare(b.ref))};
-  return {filename:(scope==='current'?'techit-material-list':'techit-build-list')+'.techit.json',
+  return {filename:exportFilename(data.plans),
     type:'application/json;charset=utf-8',content:JSON.stringify(data,null,2)+'\n'};
 }

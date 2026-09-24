@@ -32,10 +32,10 @@ CP=';'.join(map(str,[DEPS,GSON,LWJGL,TCONSTRUCT]))
 sources=sorted((MOD/'src').rglob('*.java'))
 if sources:
     run(JDK/'javac.exe','-encoding','UTF-8','-source','7','-target','7','-cp',CP,'-d',CLASSES,*sources)
-    info=[{'modid':'techitbuildlist','name':'TechIt Build List','version':'0.1.0','mcversion':'1.6.4',
+    info=[{'modid':'techitbuildlist','name':'TechIt Build List','version':'0.2.0','mcversion':'1.6.4',
            'description':'Client-side build lists exported by the TechIt calculator. Open with the configurable build-list key.'}]
     (CLASSES/'mcmod.info').write_text(json.dumps(info),encoding='utf-8')
-    out=MOD/'techit-build-list-0.1.0.jar'
+    out=MOD/'techit-build-list-0.2.0.jar'
     with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as jar:
         for file in CLASSES.rglob('*'):
             if file.is_file():jar.write(file,file.relative_to(CLASSES).as_posix())

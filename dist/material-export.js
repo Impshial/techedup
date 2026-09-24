@@ -1,4 +1,4 @@
-import { minecraftBuildListExport } from './minecraft-export.js?v=1';
+import { minecraftBuildListExport } from './minecraft-export.js?v=2';
 
 const csvCell = value => {
   let text = String(value ?? '');

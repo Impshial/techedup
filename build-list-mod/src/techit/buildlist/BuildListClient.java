@@ -9,13 +9,17 @@ import org.lwjgl.input.Keyboard;
 
 public final class BuildListClient extends KeyBindingRegistry.KeyHandler {
     static boolean tabsAvailable;
-    private BuildListClient(){super(new KeyBinding[]{new KeyBinding("TechIt build lists",Keyboard.KEY_J)},new boolean[]{false});}
+    private static BuildListSession session;
+    private boolean toggleOnRelease;
+    private BuildListClient(){super(new KeyBinding[]{new KeyBinding("TechIt checklist",Keyboard.KEY_I)},new boolean[]{false});}
     public static void initialize(){
+        session=new BuildListSession(BuildListMod.store);
         KeyBindingRegistry.registerKeyBinding(new BuildListClient());
         try {Class.forName("tconstruct.client.tabs.TabRegistry");BuildListTabs.register();tabsAvailable=true;}
         catch(ClassNotFoundException e){BuildListMod.logger.info("Inventory tabs unavailable; use the build-list key.");}
         catch(LinkageError e){BuildListMod.logger.warning("Inventory tab integration unavailable: "+e);}
     }
+    static void calculator(){Minecraft.func_71410_x().func_71373_a(new BuildListScreen(session));}
     static void addTabs(java.util.List buttons,int x,int y){if(tabsAvailable)BuildListTabs.attach(buttons,x,y);}
     static void inventory(){
         if(tabsAvailable)BuildListTabs.inventory();
@@ -23,10 +27,18 @@ public final class BuildListClient extends KeyBindingRegistry.KeyHandler {
     }
     public String getLabel(){return "TechIt build lists";}
     public EnumSet<TickType> ticks(){return EnumSet.of(TickType.CLIENT);}
-    public void keyDown(EnumSet<TickType> types,KeyBinding key,boolean tickEnd,boolean repeats){}
-    public void keyUp(EnumSet<TickType> types,KeyBinding key,boolean tickEnd) {
+    public void keyDown(EnumSet<TickType> types,KeyBinding key,boolean tickEnd,boolean repeats){
         if(!tickEnd)return;
         Minecraft mc=Minecraft.func_71410_x();
-        if(mc.field_71462_r==null&&mc.field_71439_g!=null)mc.func_71373_a(new BuildListScreen(BuildListMod.store));
+        toggleOnRelease=mc.field_71439_g!=null&&(mc.field_71462_r==null||mc.field_71462_r instanceof BuildListPopup);
+    }
+    public void keyUp(EnumSet<TickType> types,KeyBinding key,boolean tickEnd) {
+        if(!tickEnd)return;
+        if(!toggleOnRelease)return;
+        toggleOnRelease=false;
+        Minecraft mc=Minecraft.func_71410_x();
+        if(mc.field_71439_g==null)return;
+        if(mc.field_71462_r instanceof BuildListPopup)mc.func_71373_a(null);
+        else if(mc.field_71462_r==null)mc.func_71373_a(new BuildListPopup(session));
     }
 }

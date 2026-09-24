@@ -37,6 +37,10 @@ public final class BuildListStore {
         public Set<String> checked=new HashSet<String>();
         public String warning="";
     }
+    public static boolean completed(Build build) {
+        for(Row row:build.materials)if(!build.checked.contains(row.key))return false;
+        return true;
+    }
     public Build load(File file)throws IOException {
         if(!file.getCanonicalFile().getParentFile().equals(directory.getCanonicalFile()))throw new IOException("Choose a file in techit-builds.");
         try {
@@ -92,6 +96,14 @@ public final class BuildListStore {
     }
     public void toggle(Build build,Row row)throws IOException {
         Set<String> next=new HashSet<String>(build.checked);if(!next.remove(row.key))next.add(row.key);
+        saveProgress(build,next);
+    }
+    public void setCompleted(Build build,boolean completed)throws IOException {
+        Set<String> next=new HashSet<String>(build.checked);
+        for(Row row:build.materials)if(completed)next.add(row.key);else next.remove(row.key);
+        saveProgress(build,next);
+    }
+    private void saveProgress(Build build,Set<String> next)throws IOException {
         JsonObject saved=new JsonObject();JsonArray checked=new JsonArray();
         List<String> sorted=new ArrayList<String>(next);Collections.sort(sorted);for(String key:sorted)checked.add(new JsonPrimitive(key));
         saved.add("checked",checked);

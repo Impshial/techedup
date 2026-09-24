@@ -3,13 +3,13 @@ import { groupItemsByMod, renderRecipeDiagram, sortRecipeMethods, renderIngredie
 import { createItemSearch } from './search.js?v=1';
 import { capturePage, createNavigation } from './navigation.js?v=3';
 import { createBuildList } from './build-list.js?v=2';
-import { materialListExport } from './material-export.js?v=2';
+import { materialListExport } from './material-export.js?v=3';
 import { createFavorites, favoritesStorageKey, renderFavoriteButton } from './favorites.js?v=2';
 
 const $ = selector => document.querySelector(selector);
 const html = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = n => Number(n).toLocaleString();
-const state = { catalog: null, ref: null, quantity: 1, tab: 'plan', indexTab: 'all', query: '', indexQueries: {all: '', favorites: ''}, craftable: false, itemLimit: 80, recipeLimit: 40, process: '', recipes: {}, members: {}, inventory: {}, result: null, materialViews: null, oreLevel: false, target: null, layouts: {}, modOpen: {}, modLimits: {}, modGroups: [], expandedNodes: new Set(['0']) };
+const state = { catalog: null, ref: null, quantity: 1, tab: 'plan', indexTab: 'all', query: '', indexQueries: {all: '', favorites: ''}, craftable: true, itemLimit: 80, recipeLimit: 40, process: '', recipes: {}, members: {}, inventory: {}, result: null, materialViews: null, oreLevel: false, target: null, layouts: {}, modOpen: {}, modLimits: {}, modGroups: [], expandedNodes: new Set(['0']) };
 const names = stack => state.catalog.item(stack.ref).name;
 const amount = stack => fmt(stack.count) + (stack.ref.startsWith('fluid:') ? ' mB' : '');
 const isGroup = ref => ref.startsWith('ore:') || ref.startsWith('alternatives:') || ref.endsWith(':*');

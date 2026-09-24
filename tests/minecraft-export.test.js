@@ -15,7 +15,7 @@ test('Minecraft export resolves numeric IDs, exact microblock NBT and fluid name
   const before=JSON.stringify({entries,materials});
   const file=materialListExport('minecraft',entries,materials,nameFor,'build',catalog);
   const result=JSON.parse(file.content);
-  assert.equal(file.filename,'techit-build-list.techit.json');
+  assert.equal(file.filename,'2x Block of Manyullyn Fence + Resonant Energy Cell.techit.json');
   assert.equal(result.format,'techit-minecraft-build-list');
   assert.equal(result.version,1);assert.equal(result.minecraftVersion,'1.6.4');
   assert.equal(result.catalog.sha256,data.summary.sha256);
@@ -31,11 +31,24 @@ test('current Minecraft export stays separate from the combined build-list expor
   build.add(target,1,result);build.add(target,2,calculate(catalog,target,2));
   const current=materialListExport('minecraft',[{target,quantity:1}],result.materials,nameFor,'current',catalog);
   const total=materialListExport('minecraft',build.entries,build.total().materials,nameFor,'build',catalog);
-  assert.equal(current.filename,'techit-material-list.techit.json');
+  assert.equal(current.filename,'Resonant Energy Cell.techit.json');
+  assert.equal(total.filename,'Resonant Energy Cell + 2x Resonant Energy Cell.techit.json');
   assert.equal(JSON.parse(current.content).plans.length,1);
   assert.equal(JSON.parse(total.content).plans.length,2);
   const counts=file=>new Map(JSON.parse(file.content).materials.map(row=>[row.ref,row.quantity]));
   assert.ok(counts(total).get('item:368:0')>counts(current).get('item:368:0'));
+});
+
+test('Minecraft export filenames handle Windows characters, reserved names and long multi-item plans',()=>{
+  const target={ref:'item:1:0',count:1};
+  const make=(name,entries=[{target,quantity:1}])=>materialListExport('minecraft',entries,[],()=>name,'build',catalog).filename;
+  assert.equal(make('A/B: "Cell"? <I> | *.'),'A B Cell I.techit.json');
+  assert.equal(make('CON'),'TechIt CON.techit.json');
+  assert.equal(make('...'),'Build list.techit.json');
+  const name='Long machine name '.repeat(30);
+  const a=make(name),b=make(name,[{target,quantity:2}]);
+  assert.ok(a.length<=180);assert.ok(b.length<=180);assert.notEqual(a,b);
+  assert.match(a,/ - [a-f0-9]{8}\.techit\.json$/);
 });
 
 test('Minecraft export preserves unresolved rows and long NBT integers instead of inventing item IDs',()=>{
