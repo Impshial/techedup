@@ -3,14 +3,14 @@ function exportFilename(plans) {
   const label=plans.map(plan=>(plan.quantity>1?`${plan.quantity}x `:'')+plan.name).join(' + ') || 'Empty build list';
   let name=label.replace(/[<>:"/\\|?*\u0000-\u001f]/g,' ').replace(/\s+/g,' ').trim().replace(/[. ]+$/g,'');
   if(!name)name='Build list';
-  if(/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(name))name='TechIt '+name;
+  if(/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(name))name='Teched Up '+name;
   if(name.length>160) {
     // Different large plans should not collapse to the same truncated filename.
     const identity=JSON.stringify(plans.map(({ref,quantity})=>({ref,quantity})));
     let hash=2166136261;for(const char of identity)hash=Math.imul(hash^char.charCodeAt(0),16777619)>>>0;
     name=name.slice(0,140).replace(/[. ]+$/g,'')+' - '+hash.toString(16).padStart(8,'0');
   }
-  return name+'.techit.json';
+  return name+'.techedup.json';
 }
 
 // The GUI mod reads this versioned format directly; PNGs and recipes stay on the site.

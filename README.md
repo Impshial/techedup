@@ -1,4 +1,4 @@
-# TechIt recipe calculator
+# Teched Up recipe calculator
 
 Static website for the installed Minecraft 1.6.4 TechIt-ng pack. Recipe data comes from the loaded game registries, backed by inspection of the installed mod code and configuration. Earlier MineTweaker log imports are obsolete.
 
@@ -16,9 +16,9 @@ There is no database server. `dist/catalog.json` is the normalized recipe catalo
 
 ## Minecraft build-list mod
 
-The client-side [TechIt Build List mod](build-list-mod/README.md) displays exported lists in a green checkmark tab beside the pack's inventory tabs. **I** shows a compact checklist HUD docked on the right while gameplay remains active. Press **I** again to use its controls; **I** or Escape returns to gameplay. It includes minimize, close, and **Open calculator** controls. Download the [1.6.4 mod JAR](dist/downloads/techit-build-list-0.3.0.jar) and put it in the instance's `minecraft/mods` folder before launching; replace older TechIt Build List JARs.
+The client-side [Teched Up Build List mod](build-list-mod/README.md) displays exported lists in a green checkmark tab beside the pack's inventory tabs. **I** shows a compact checklist HUD docked on the right while gameplay remains active. Press **I** again to use its controls; **I** or Escape returns to gameplay. It includes minimize, close, and **Open calculator** controls. Download the [1.6.4 mod JAR](dist/downloads/teched-up-build-list-0.4.0.jar) and put it in the instance's `minecraft/mods` folder before launching; replace older Teched Up or TechIt Build List JARs.
 
-Choose **Export → Minecraft** for the current plan or combined Build list. Save the `.techit.json` file into `minecraft/techit-builds`, then use **Refresh** in the mod. The mod creates that folder and its progress directory on first load. Checkboxes persist across game sessions; no running website or server mod is required. See the [instructions and format documentation](build-list-mod/README.md) for details.
+Choose **Export → Minecraft** for the current plan or combined Build list. Save the `.techedup.json` file into `minecraft/teched-up-builds`, then use **Refresh** in the mod. New installations create that folder and its progress directory on first load. Existing installations keep `minecraft/techit-builds` and continue to accept `.techit.json` files; **Open folder** opens the active location. Checkboxes persist across game sessions; no running website or server mod is required. See the [instructions and format documentation](build-list-mod/README.md) for details.
 
 ## Build and run
 
@@ -33,7 +33,7 @@ python -m http.server 4173 --bind 127.0.0.1 --directory dist
 
 ## Deploy with Vercel
 
-1. In Vercel, choose **Add New → Project** and import `Impshial/techit`.
+1. In Vercel, choose **Add New → Project** and import `Impshial/techedup`.
 2. Keep the root directory at the repository root. The checked-in `vercel.json` selects **Other**, runs `npm run build`, skips dependency installation, and serves `dist`.
 3. Deploy. No environment variables, database, Python, Minecraft installation, or running game are required on Vercel.
 

@@ -12,6 +12,7 @@ node_modules/
 *.log
 *.jar
 !dist/downloads/techit-build-list-*.jar
+!dist/downloads/teched-up-build-list-*.jar
 *.zip
 exporter/build/
 exporter/test-build/

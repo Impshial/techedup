@@ -1,6 +1,6 @@
 """Build a Java 7/SRG client mod against the installed 1.6.4 jars, without redistributing them."""
 from pathlib import Path
-import json, lzma, os, subprocess, zipfile
+import json, lzma, os, shutil, subprocess, zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
 MOD=ROOT/'build-list-mod'
@@ -32,10 +32,15 @@ CP=';'.join(map(str,[DEPS,GSON,LWJGL,TCONSTRUCT]))
 sources=sorted((MOD/'src').rglob('*.java'))
 if sources:
     run(JDK/'javac.exe','-encoding','UTF-8','-source','7','-target','7','-cp',CP,'-d',CLASSES,*sources)
-    info=[{'modid':'techitbuildlist','name':'TechIt Build List','version':'0.3.0','mcversion':'1.6.4',
-           'description':'Client-side build lists exported by the TechIt calculator. Open with the configurable build-list key.'}]
+    for resource in (MOD/'resources').rglob('*'):
+        if resource.is_file():
+            target=CLASSES/resource.relative_to(MOD/'resources')
+            target.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copyfile(resource,target)
+    info=[{'modid':'techitbuildlist','name':'Teched Up Build List','version':'0.4.0','mcversion':'1.6.4',
+           'description':'Client-side build lists exported by the Teched Up calculator. Open with the configurable build-list key.'}]
     (CLASSES/'mcmod.info').write_text(json.dumps(info),encoding='utf-8')
-    out=MOD/'techit-build-list-0.3.0.jar'
+    out=MOD/'teched-up-build-list-0.4.0.jar'
     with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as jar:
         for file in CLASSES.rglob('*'):
             if file.is_file():jar.write(file,file.relative_to(CLASSES).as_posix())

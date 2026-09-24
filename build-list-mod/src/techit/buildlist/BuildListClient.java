@@ -15,6 +15,7 @@ public final class BuildListClient extends KeyBindingRegistry.KeyHandler {
     private static BuildListSession session;
     private static BuildListHud hud;
     private boolean toggleOnRelease;
+    // This saved options key stays stable; the language resource supplies the new display name.
     private BuildListClient(){super(new KeyBinding[]{new KeyBinding("TechIt checklist",Keyboard.KEY_I)},new boolean[]{false});}
     public static void initialize(){
         session=new BuildListSession(BuildListMod.store);
@@ -33,7 +34,7 @@ public final class BuildListClient extends KeyBindingRegistry.KeyHandler {
         if(tabsAvailable)BuildListTabs.inventory();
         else {Minecraft mc=Minecraft.func_71410_x();mc.func_71373_a(new net.minecraft.client.gui.inventory.GuiInventory(mc.field_71439_g));}
     }
-    public String getLabel(){return "TechIt build lists";}
+    public String getLabel(){return "Teched Up build lists";}
     public EnumSet<TickType> ticks(){return EnumSet.of(TickType.CLIENT);}
     public void keyDown(EnumSet<TickType> types,KeyBinding key,boolean tickEnd,boolean repeats){
         if(!tickEnd)return;

@@ -8,19 +8,26 @@ import java.util.*;
 
 /** File contract and progress persistence; independent of the Minecraft client. */
 public final class BuildListStore {
+    public static final String DIRECTORY="teched-up-builds";
     public final File directory,progressDirectory;
     private static final Gson JSON=new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
     public BuildListStore(File minecraftDirectory)throws IOException {
-        directory=new File(minecraftDirectory,"techit-builds");progressDirectory=new File(directory,".progress");
+        // Reuse an existing installation's folder, selection and progress without moving user files.
+        File legacy=new File(minecraftDirectory,"techit-builds");
+        directory=legacy.isDirectory()?legacy:new File(minecraftDirectory,DIRECTORY);progressDirectory=new File(directory,".progress");
         ensureDirectory(directory);ensureDirectory(progressDirectory);
         File guide=new File(directory,"README.txt");
-        if(!guide.exists())write(guide,"Export > Minecraft in the TechIt calculator. Save the .techit.json file here.\r\nOpen TechIt Build Lists in game and click Refresh.\r\n.progress contains saved checkboxes. Original exports are never edited.\r\n");
+        String oldGuide="Export > Minecraft in the TechIt calculator. Save the .techit.json file here.\r\nOpen TechIt Build Lists in game and click Refresh.\r\n.progress contains saved checkboxes. Original exports are never edited.\r\n";
+        if(!guide.exists()||(guide.length()<4096&&oldGuide.equals(new String(readBytes(guide,4096),"UTF-8"))))
+            write(guide,"Export > Minecraft in the Teched Up calculator. Save the .techedup.json file here.\r\nOpen Teched Up Build List in game and click Refresh. Older .techit.json exports also work.\r\n.progress contains saved checkboxes. Original exports are never edited.\r\n");
     }
+    static boolean isExportName(String name){String lower=name.toLowerCase(Locale.ROOT);return lower.endsWith(".techedup.json")||lower.endsWith(".techit.json");}
+    static String listTitle(File file){return file.getName().replaceFirst("(?i)\\.(?:techedup|techit)\\.json$","");}
     private static void ensureDirectory(File folder)throws IOException {
         if(!folder.isDirectory()&&!folder.mkdirs())throw new IOException("Cannot create "+folder.getAbsolutePath());
     }
     public List<File> files() {
-        File[] files=directory.listFiles(new FilenameFilter(){public boolean accept(File dir,String name){return name.toLowerCase(Locale.ROOT).endsWith(".techit.json");}});
+        File[] files=directory.listFiles(new FilenameFilter(){public boolean accept(File dir,String name){return isExportName(name);}});
         List<File> result=new ArrayList<File>();if(files!=null)for(File file:files)if(file.isFile())result.add(file);
         Collections.sort(result,new Comparator<File>(){public int compare(File a,File b){return a.getName().compareToIgnoreCase(b.getName());}});
         return result;
@@ -42,13 +49,13 @@ public final class BuildListStore {
         return true;
     }
     public Build load(File file)throws IOException {
-        if(!file.getCanonicalFile().getParentFile().equals(directory.getCanonicalFile()))throw new IOException("Choose a file in techit-builds.");
+        if(!file.getCanonicalFile().getParentFile().equals(directory.getCanonicalFile()))throw new IOException("Choose a file in "+directory.getName()+".");
         try {
             byte[] bytes=readBytes(file,4*1024*1024);
             JsonObject root=new JsonParser().parse(new String(bytes,"UTF-8")).getAsJsonObject();
             if(!"techit-minecraft-build-list".equals(string(root,"format"))||integer(root,"version",1,1)!=1)throw new IOException("Use Export > Minecraft in the calculator.");
             if(!"1.6.4".equals(string(root,"minecraftVersion")))throw new IOException("This list is for a different Minecraft version.");
-            Build build=new Build();build.title=file.getName().replaceFirst("(?i)\\.techit\\.json$","");
+            Build build=new Build();build.title=listTitle(file);
             build.fingerprint=hex(MessageDigest.getInstance("SHA-256").digest(bytes));
             build.plans=rows(root.getAsJsonArray("plans"),"plans");build.materials=rows(root.getAsJsonArray("materials"),"materials");
             File progress=new File(progressDirectory,build.fingerprint+".json");

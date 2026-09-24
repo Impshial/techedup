@@ -10,8 +10,9 @@ guava=build.LIB/'com/google/guava/guava/14.0/guava-14.0.jar'
 cp=str(build.CLASSES)+';'+build.CP+';'+str(guava)
 build.run(build.JDK/'javac.exe','-encoding','UTF-8','-source','7','-target','7','-cp',cp,'-d',output,*sorted((ROOT/'build-list-mod/test/techit').rglob('*.java')))
 build.run(build.JDK/'java.exe','-cp',str(output)+';'+cp,'techit.buildlist.BuildListTest',output,output/'from-calculator.techit.json')
-with zipfile.ZipFile(ROOT/'build-list-mod/techit-build-list-0.3.0.jar') as jar:
-    assert all(n.startswith('techit/buildlist/') or n=='mcmod.info' for n in jar.namelist()),'Third-party classes leaked into distribution'
+with zipfile.ZipFile(ROOT/'build-list-mod/teched-up-build-list-0.4.0.jar') as jar:
+    assert all(n.startswith(('techit/buildlist/','assets/techitbuildlist/')) or n=='mcmod.info' for n in jar.namelist()),'Third-party classes leaked into distribution'
+    assert jar.read('assets/techitbuildlist/lang/en_US.lang').decode('utf-8').strip()=='TechIt checklist=Teched Up checklist','Missing key-binding display name'
     for name in jar.namelist():
         if name.endswith('.class'):assert int.from_bytes(jar.read(name)[6:8],'big')==51,'Requires Java newer than 7'
 print('PASS: JAR contains only the mod and metadata, with Java 7 bytecode.')

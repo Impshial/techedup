@@ -3,7 +3,7 @@ import { groupItemsByMod, renderRecipeDiagram, sortRecipeMethods, renderIngredie
 import { createItemSearch } from './search.js?v=1';
 import { capturePage, createNavigation } from './navigation.js?v=3';
 import { createBuildList } from './build-list.js?v=2';
-import { materialListExport } from './material-export.js?v=3';
+import { materialListExport } from './material-export.js?v=4';
 import { createFavorites, favoritesStorageKey, renderFavoriteButton } from './favorites.js?v=2';
 
 const $ = selector => document.querySelector(selector);
@@ -87,7 +87,7 @@ function restorePage(page) {
     $('.tabs').hidden=true;$('#selected').innerHTML='';
     $('#view').innerHTML='<p class="empty-selection">Choose an item from the index.</p>';
   }
-  document.title=state.ref?`${state.catalog.item(state.ref).name} · TechIt`:'TechIt · Recipe calculator';
+  document.title=state.ref?`${state.catalog.item(state.ref).name} · Teched Up`:'Teched Up · Recipe calculator';
   restoreFrame=requestAnimationFrame(()=>{
     $('#item-list').scrollTop=indexScroll;
     window.scrollTo({top:scrollY,behavior:'instant'});

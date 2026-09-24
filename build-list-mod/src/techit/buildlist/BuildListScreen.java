@@ -110,11 +110,11 @@ public final class BuildListScreen extends GuiScreen {
                 func_73734_a(left+17,y+8,left+27,y+18,0xFF1F2A38);
                 if(Boolean.TRUE.equals(done))BuildListIcons.checkmark(left+16,y+10,1);
                 else if(done==null)func_73731_b(field_73886_k,"?",left+19,y+9,0xFFB4A4);
-                func_73731_b(field_73886_k,text(file.getName().replaceFirst("(?i)\\.techit\\.json$",""),panelWidth-56),left+36,y+8,Boolean.TRUE.equals(done)?0x94B39E:0xFFFFFF);
+                func_73731_b(field_73886_k,text(BuildListStore.listTitle(file),panelWidth-56),left+36,y+8,Boolean.TRUE.equals(done)?0x94B39E:0xFFFFFF);
             } else drawRow(rows.get(i+offset),y);
         }
         if(count==0) {
-            String empty=build==null?(files.isEmpty()?"Save a Minecraft export in techit-builds.":"No matching lists."):"No materials to show.";
+            String empty=build==null?(files.isEmpty()?"Save an export using Open folder.":"No matching lists."):"No materials to show.";
             func_73731_b(field_73886_k,text(empty,panelWidth-32),left+16,rowsTop+12,0xCCD6E4);
         }
         if(count>visibleCount()) {
@@ -185,7 +185,7 @@ public final class BuildListScreen extends GuiScreen {
             case 102:hideCompleted=!hideCompleted;offset=0;hideButton.field_73744_e=hideCompleted?"Show completed":"Hide completed";break;
             case 103:showPlans=!showPlans;offset=0;icons.clear();modeButton.field_73744_e=showPlans?"Materials":"To build";hideButton.field_73742_g=!showPlans;break;
             case 104:build=null;selected=null;files=session.refreshFiles();completion.clear();query="";offset=0;message="";func_73866_w_();break;
-            case 105:if(store!=null&&Desktop.isDesktopSupported())Desktop.getDesktop().open(store.directory);else message="Folder: minecraft/techit-builds";break;
+            case 105:if(store!=null&&Desktop.isDesktopSupported())Desktop.getDesktop().open(store.directory);else message="Folder: minecraft/"+(store==null?BuildListStore.DIRECTORY:store.directory.getName());break;
             case 106:if(store!=null){if(selected!=null)open(selected);else {refreshLists();completion.clear();message="";}}break;
             case 107:BuildListClient.inventory();break;
             default:break;

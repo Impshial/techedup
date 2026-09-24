@@ -1,6 +1,6 @@
 # Minecraft build-list format, version 1
 
-UTF-8 JSON with a `.techit.json` filename. Generate it using **Export → Minecraft**, not the calculator's general JSON option.
+Teched Up exports UTF-8 JSON with a `.techedup.json` filename. Older `.techit.json` files remain supported. The internal format identifier stays unchanged for compatibility. Generate it using **Export → Minecraft**, not the calculator's general JSON option.
 
 ```json
 {

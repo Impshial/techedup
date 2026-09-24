@@ -16,7 +16,7 @@ test('JSON exports combined quantities, units, and exact variant data without mu
   const before=JSON.stringify(list.entries);
   const file=materialListExport('json',list.entries,list.total().materials,nameFor);
   const data=JSON.parse(file.content);
-  assert.equal(file.filename,'techit-build-list.json');
+  assert.equal(file.filename,'teched-up-build-list.json');
   assert.deepEqual(data.plans.map(item=>item.quantity),[2,3]);
   assert.equal(data.materials.find(item=>item.ref==='iron').quantity,15);
   assert.deepEqual(data.materials.find(item=>item.ref==='fluid:1'),{name:'Water',ref:'fluid:1',quantity:1250,unit:'mB'});
@@ -27,7 +27,7 @@ test('JSON exports combined quantities, units, and exact variant data without mu
 test('current-list exports exclude other plans in every format',()=>{
   for(const format of ['json','csv','markdown']) {
     const file=materialListExport(format,[plan],materials,nameFor,'current');
-    assert.match(file.filename,/^techit-material-list\./);
+    assert.match(file.filename,/^teched-up-material-list\./);
     assert.doesNotMatch(file.content,/Second Machine/);
     if(format==='json')assert.equal(JSON.parse(file.content).materials.find(item=>item.ref==='iron').quantity,6);
     if(format==='csv')assert.match(file.content,/"Iron Ore","6","items","iron"/);
@@ -46,7 +46,7 @@ test('CSV quotes commas, quotes, and newlines and keeps spreadsheet formulas as 
 
 test('Markdown makes materials checkable, preserves fluid units, escapes names, and handles an empty material list',()=>{
   const file=materialListExport('markdown',[plan],materials,stack=>stack.ref==='iron'?'Iron *Ore* [A]':nameFor(stack));
-  assert.equal(file.filename,'techit-build-list.md');
+  assert.equal(file.filename,'teched-up-build-list.md');
   assert.match(file.content,/- 2 × Machine/);
   assert.ok(file.content.includes('- [ ] 6 × Iron \\*Ore\\* \\[A\\]'));
   assert.ok(file.content.includes('- [ ] 1250 mB × Water'));

@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#182638"><title>TechIt · Recipe calculator</title>
-  <meta name="description" content="Find Minecraft 1.6.4 recipes and item uses, then calculate the ingredients for your next build.">
-  <link rel="stylesheet" href="./style.css?v=16"><script type="module" src="./app.js?v=22"></script>
+  <meta name="theme-color" content="#182638"><title>Teched Up · Recipe calculator</title>
+  <meta name="description" content="Teched Up: find Minecraft 1.6.4 recipes and item uses, then calculate the ingredients for your next build.">
+  <link rel="stylesheet" href="./style.css?v=16"><script type="module" src="./app.js?v=23"></script>
 </head>
 <body>
-  <header class="topbar"><a class="brand" href="./" data-home><span class="brand-mark" aria-hidden="true">T</span><span>TECHIT <small>RECIPE CALCULATOR</small></span></a><div class="top-meta"><span id="loaded-count">Loading recipes…</span><button id="build-list-open" class="build-list-open" data-view-build hidden>Build list <span data-build-count>0</span></button></div></header>
+  <header class="topbar"><a class="brand" href="./" data-home><span class="brand-mark" aria-hidden="true">T</span><span>TECHED UP <small>RECIPE CALCULATOR</small></span></a><div class="top-meta"><span id="loaded-count">Loading recipes…</span><button id="build-list-open" class="build-list-open" data-view-build hidden>Build list <span data-build-count>0</span></button></div></header>
   <main>
     <aside class="index"><div class="index-tabs" role="tablist" aria-label="Item lists"><button id="all-items-tab" role="tab" aria-controls="index-panel" aria-selected="true" data-index-tab="all">All items</button><button id="favorites-tab" role="tab" aria-controls="index-panel" aria-selected="false" tabindex="-1" data-index-tab="favorites">Favorites</button></div><p id="favorites-status" class="favorites-status" role="alert" hidden></p><div id="index-panel" role="tabpanel" aria-labelledby="all-items-tab"><div class="index-heading"><h1 id="index-title">Item index</h1></div><label class="search"><span class="sr-only">Search names, item IDs or ore groups</span><input id="search" type="search" placeholder="Search items or IDs…" autocomplete="off"></label><div class="filters"><label><input id="has-recipe" type="checkbox" checked> Has a recipe</label><span id="result-count"></span></div><div id="item-list" class="item-list"><p class="empty">Loading catalog…</p></div><button id="more-items" class="link-button" hidden>Show more items</button></div><div class="index-bottom" aria-hidden="true"></div></aside>
     <section class="workspace"><nav id="page-navigation" class="page-navigation" aria-label="Calculator navigation" hidden></nav><div id="selected"></div><nav hidden class="tabs" aria-label="Item views"><button data-tab="plan" class="active">Crafting plan</button><button data-tab="recipes">Recipes <span id="recipes-count">0</span></button><button data-tab="uses">Used in <span id="uses-count">0</span></button></nav><div id="view"></div></section>

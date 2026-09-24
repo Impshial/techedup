@@ -54,7 +54,7 @@ public final class BuildListHud implements ITickHandler,BuildListPopup.Controlle
             GL11.glPopAttrib();GL11.glMatrixMode(matrixMode);
         }
     }
-    public String getLabel(){return "TechIt checklist HUD";}
+    public String getLabel(){return "Teched Up checklist HUD";}
     public EnumSet<TickType> ticks(){return EnumSet.of(TickType.CLIENT);}
     public void tickStart(EnumSet<TickType> types,Object... data){}
     public void tickEnd(EnumSet<TickType> types,Object... data) {

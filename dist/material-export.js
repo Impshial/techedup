@@ -1,4 +1,4 @@
-import { minecraftBuildListExport } from './minecraft-export.js?v=2';
+import { minecraftBuildListExport } from './minecraft-export.js?v=3';
 
 const csvCell = value => {
   let text = String(value ?? '');
@@ -10,7 +10,7 @@ const markdownText = value => String(value).replace(/[\r\n]+/g, ' ').replace(/[\
 
 export function materialListExport(format, entries, materials, nameFor, scope = 'build', catalog = null) {
   if(format==='minecraft')return minecraftBuildListExport(entries,materials,nameFor,scope,catalog);
-  const filename = scope === 'current' ? 'techit-material-list' : 'techit-build-list';
+  const filename = scope === 'current' ? 'teched-up-material-list' : 'teched-up-build-list';
   const title = scope === 'current' ? 'Material list' : 'Build list';
   const record = (stack, quantity) => ({
     name: nameFor(stack), ref: stack.ref, quantity,

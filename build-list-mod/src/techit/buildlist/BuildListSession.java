@@ -4,7 +4,6 @@ import com.google.gson.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.List;
-import java.util.Locale;
 
 /** One selected export shared by the full screen and compact checklist. */
 final class BuildListSession {
@@ -22,7 +21,7 @@ final class BuildListSession {
             JsonObject saved=new JsonParser().parse(new String(BuildListStore.readBytes(preference,4096),"UTF-8")).getAsJsonObject();
             String name=BuildListStore.string(saved,"file");
             // Preferences may only name a direct child export, never a path.
-            if(name.indexOf('/')>=0||name.indexOf('\\')>=0||!name.toLowerCase(Locale.ROOT).endsWith(".techit.json"))throw new IOException("Invalid saved list name.");
+            if(name.indexOf('/')>=0||name.indexOf('\\')>=0||!BuildListStore.isExportName(name))throw new IOException("Invalid saved list name.");
             File file=new File(store.directory,name);
             if(file.isFile()){selected=file;build=store.load(file);message=build.warning;}
             else {clearSelection();message=LIST_REMOVED;}

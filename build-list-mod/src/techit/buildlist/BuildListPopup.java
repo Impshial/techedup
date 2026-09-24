@@ -99,7 +99,7 @@ public final class BuildListPopup extends GuiScreen {
         for(int i=0;i<visible&&i+listOffset<files.size();i++) {
             File file=files.get(i+listOffset);int rowY=y+i*ChecklistLayout.BUTTON_HEIGHT;
             if(listRowAt(mouseX,mouseY)==i+listOffset)func_73734_a(x+1,rowY,x+w-1,rowY+ChecklistLayout.BUTTON_HEIGHT,0xFF364B63);
-            String name=file.getName().replaceFirst("(?i)\\.techit\\.json$","");
+            String name=BuildListStore.listTitle(file);
             func_73731_b(field_73886_k,text(name,w-15),x+5,rowY+6,file.equals(session.selected)?0x80E698:0xFFFFFF);
         }
         if(files.size()>visible) {

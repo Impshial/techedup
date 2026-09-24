@@ -69,6 +69,7 @@ public final class BuildListTest {
         PopupTest.run(resumed,file,renamed);
         HudTest.run(resumed,file);
         ListFilesTest.run(root,original);
+        RebrandTest.run(root,original);
         String text=new String(original,"UTF-8");
         expectRejected(store,file,text.replace("\"version\": 1","\"version\": 99"),"unknown version");
         expectRejected(store,file,text.replace("\"minecraftVersion\": \"1.6.4\"","\"minecraftVersion\": \"1.7.10\""),"different game version");
@@ -84,6 +85,7 @@ public final class BuildListTest {
         java.lang.reflect.Constructor<BuildListClient> constructor=BuildListClient.class.getDeclaredConstructor();constructor.setAccessible(true);
         net.minecraft.client.settings.KeyBinding[] keys=constructor.newInstance().getKeyBindings();
         check(keys.length==1&&keys[0].field_74512_d==23,"only I is registered; J stays free for JourneyMap");
+        check(keys[0].field_74515_c.equals("TechIt checklist"),"saved key binding identity survives its translated display-name change");
         System.out.println("PASS: automatic folders, calculator export, NBT, fluids, persistent checks, shared selection, master completion, popup bounds/scrolling, validation and GUI linkage.");
     }
     static void expectRejected(BuildListStore store,File file,String text,String message)throws Exception {
