@@ -6,3 +6,4 @@
 .empty-selection{color:var(--muted);font-size:15px;margin:45px 0;text-align:center}
 .recipe-filter{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:18px 0;font-size:14px}.recipe-filter select{padding:8px 12px;border:1px solid var(--line);background:#fff;border-radius:4px;max-width:100%}
 .diagram-item.fluid img{object-fit:fill}
+.page-navigation{display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin:0 0 20px}.page-navigation[hidden],.tabs[hidden]{display:none}.navigation-back{border:1px solid #cbd5e1;border-radius:5px;background:#fff;padding:8px 12px;color:var(--blue);font-size:14px;text-align:left;overflow-wrap:anywhere}.navigation-back:hover{background:#eaf1fc}.page-navigation .link-button{font-size:14px}

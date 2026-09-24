@@ -2,11 +2,11 @@
 
 Static website for the installed Minecraft 1.6.4 TechIt-ng pack. Recipe data comes from the loaded game registries, backed by inspection of the installed mod code and configuration. Earlier MineTweaker log imports are obsolete.
 
-The preview is served at http://127.0.0.1:4173/. It starts with no item selected. The index groups items by mod; selected plans start with only their root expanded. Recipes and reverse uses include a process filter. Plans support quantities, recipe and ore-dictionary alternatives, reusable tools, guaranteed by-products, and owned inventory.
+The preview is served at http://127.0.0.1:4173/. Fresh visits start with no item selected. The index groups items by mod; newly selected plans start with only their root expanded. Browser Back/Forward and the named Back button restore previous item/tab views, quantities, recipe choices, searches, filters, and tree expansion. Reloading an existing history entry restores that view. Owned inventory remains shared across views during the session. Recipes and reverse uses include a process filter. Plans support quantities, recipe and ore-dictionary alternatives, reusable tools, guaranteed by-products, and owned inventory.
 
 ## Storage
 
-There is no database server. `dist/catalog.json` is the normalized recipe catalog and `dist/recipe-layouts.json` describes the machine panels. PNG assets live under `dist/images/`. Exact numeric IDs, metadata, and normalized NBT identify item variants. Inventory and recipe choices currently live in browser memory and reset on reload.
+There is no database server. `dist/catalog.json` is the normalized recipe catalog and `dist/recipe-layouts.json` describes the machine panels. PNG assets live under `dist/images/`. Exact numeric IDs, metadata, and normalized NBT identify item variants. Recipe choices and view state are saved in the tab's browser-history entries. Owned inventory lives in browser memory and resets on reload.
 
 `source/runtime/recipes-*.json` retains original game snapshots. `source/runtime/catalog.json` is rebuilt from them; `audit/` stores source hashes, normalization exceptions, image provenance, and inspected code. Only `dist/` is served by the website.
 

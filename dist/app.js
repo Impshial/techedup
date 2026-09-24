@@ -1,6 +1,7 @@
 import { Catalog, calculate, key, fromKey } from './planner.js?v=6';
 import { groupItemsByMod, renderRecipeDiagram, sortRecipeMethods } from './recipe-view.js?v=6';
 import { createItemSearch } from './search.js?v=1';
+import { capturePage, createNavigation } from './navigation.js?v=1';
 
 const $ = selector => document.querySelector(selector);
 const html = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -9,6 +10,60 @@ const state = { catalog: null, ref: null, quantity: 1, tab: 'plan', query: '', c
 const names = stack => state.catalog.item(stack.ref).name;
 const amount = stack => fmt(stack.count) + (stack.ref.startsWith('fluid:') ? ' mB' : '');
 const isGroup = ref => ref.startsWith('ore:') || ref.startsWith('alternatives:') || ref.endsWith(':*');
+let restoringPage = false, restoreFrame = 0, navigationReady = false, scrollTimer = 0;
+const navigation = createNavigation(history, location, restorePage);
+const pageSnapshot = () => capturePage(state, {scrollY:window.scrollY,indexScroll:$('#item-list').scrollTop});
+function checkpoint() {
+  if(scrollTimer) {clearTimeout(scrollTimer);scrollTimer=0;}
+  if(navigationReady && !restoringPage) navigation.save(pageSnapshot());
+}
+function saveScroll() {
+  if(!navigationReady || restoringPage || scrollTimer) return;
+  // Avoid browser history rate limits during continuous scrolling.
+  scrollTimer=setTimeout(()=>{scrollTimer=0;checkpoint();},750);
+}
+function pageLabel() {
+  if(!state.ref) return 'item index';
+  return state.catalog.item(state.ref).name + (state.tab==='recipes'?' recipes':state.tab==='uses'?' uses':'');
+}
+function renderNavigation() {
+  const back=navigation.backLabel;
+  $('#page-navigation').hidden=back===null;
+  $('#page-navigation').innerHTML=back===null?'':`<button class="navigation-back" data-back>← Back to ${html(back)}</button>${state.ref&&back!=='item index'?'<button class="link-button" data-home>Item index</button>':''}`;
+}
+function restorePage(page) {
+  if(restoreFrame) cancelAnimationFrame(restoreFrame);
+  if(scrollTimer) {clearTimeout(scrollTimer);scrollTimer=0;}
+  restoringPage=true;
+  const {expandedNodes,scrollY,indexScroll,...view}=page;
+  Object.assign(state,view,{expandedNodes:new Set(expandedNodes)});
+  if($('#data-dialog').open) $('#data-dialog').close();
+  $('#search').value=state.query;
+  $('#has-recipe').checked=state.craftable;
+  renderIndex();renderNavigation();
+  if(state.ref) {renderHeader();renderView();}
+  else {
+    state.result=null;
+    $('.tabs').hidden=true;$('#selected').innerHTML='';
+    $('#view').innerHTML='<p class="empty-selection">Choose an item from the index.</p>';
+  }
+  document.title=state.ref?`${state.catalog.item(state.ref).name} · TechIt`:'TechIt · Recipe calculator';
+  restoreFrame=requestAnimationFrame(()=>{
+    $('#item-list').scrollTop=indexScroll;
+    window.scrollTo({top:scrollY,behavior:'instant'});
+    restoreFrame=0;restoringPage=false;
+    checkpoint();
+  });
+}
+function visitPage() {
+  const page=pageSnapshot();page.scrollY=0;
+  navigation.visit(page,pageLabel());restorePage(page);
+}
+function showIndex() {
+  if(!state.ref) return;
+  checkpoint();state.ref=null;state.target=null;state.tab='plan';state.process='';
+  visitPage();
+}
 function icon(ref, large = false) {
   const item = state.catalog.item(ref);
   return `<span class="icon${large ? ' large' : ''}" title="${html(item.image ? item.imageType : 'Image mapping needed')}" aria-hidden="true">${item.image ? `<img src="${html(item.image)}" alt="" loading="lazy">` : '<span class="unknown">?</span>'}</span>`;
@@ -43,9 +98,10 @@ function setTarget(ref, recipeId) {
 }
 function select(ref, recipeId) {
   if (isGroup(ref)) return showAlternatives({ ref, count: 1 });
+  if (ref===state.ref && state.tab==='plan' && !recipeId) return;
+  checkpoint();
   setTarget(ref, recipeId); state.expandedNodes=new Set(['0']); state.quantity = 1; state.tab = 'plan'; state.recipeLimit = 40;state.process='';
-  history.replaceState(null, '', '#' + encodeURIComponent(ref));
-  renderIndex(); renderHeader(); renderView();
+  visitPage();
 }
 function renderHeader() {
   $('.tabs').hidden=false;
@@ -115,11 +171,14 @@ async function copyList() {
   catch { openDialog('Copy material list', `<p>Select and copy the text below.</p><textarea style="width:100%;min-height:250px" aria-label="Material list">${html(lines.join('\n'))}</textarea>`); }
 }
 document.addEventListener('click', event => {
+  if(event.target.closest('a[data-home]') && state.catalog) {event.preventDefault();showIndex();return;}
   const button = event.target.closest('button');
   if (!button || !state.catalog) return;
   const d = button.dataset;
-  if (d.item) { if (!isGroup(d.item)) $('#data-dialog').close(); select(d.item); }
-  else if (d.tab) { state.tab = d.tab; state.recipeLimit = 40; state.process=''; renderView(); }
+  if ('back' in d) {checkpoint();navigation.back();return;}
+  else if ('home' in d) {showIndex();return;}
+  else if (d.item) { if (!isGroup(d.item)) $('#data-dialog').close(); select(d.item); }
+  else if (d.tab) { if(d.tab===state.tab)return;checkpoint();state.tab = d.tab; state.recipeLimit = 40; state.process=''; visitPage(); }
   else if (d.quantity) { state.quantity = Math.max(1, Math.min(1000000, state.quantity + Number(d.quantity))); renderHeader(); renderView(); }
   else if (d.useRecipe) { const recipe = state.catalog.recipes.get(d.useRecipe); select(recipe.output.ref, recipe.id); }
   else if (d.addOwned) { state.inventory[d.addOwned] = (state.inventory[d.addOwned] || 0) + 1; renderPlan(); }
@@ -131,6 +190,7 @@ document.addEventListener('click', event => {
   else if (button.id === 'about') showData();
   else if (button.id === 'close-dialog') $('#data-dialog').close();
   else if (button.id === 'copy-list') copyList();
+  checkpoint();
 });
 document.addEventListener('input', event => {
   if (!state.catalog) return;
@@ -139,16 +199,18 @@ document.addEventListener('input', event => {
     const value = event.target.value.trim();
     $('#inventory-matches').innerHTML = value ? matches(value).slice(0, 8).map(item => `<button class="inventory-match" data-add-owned="${html(item.ref)}">${html(item.name)}</button>`).join('') : '';
   }
+  checkpoint();
 });
 document.addEventListener('change', event => {
   if (!state.catalog) return;
   const input = event.target;
-  if(input.id==='process-filter'){state.process=input.value;state.recipeLimit=40;renderView();return;}
+  if(input.id==='process-filter'){state.process=input.value;state.recipeLimit=40;renderView();checkpoint();return;}
   if (input.id === 'quantity') { state.quantity = Math.max(1, Math.min(1000000, Math.trunc(Number(input.value) || 1))); renderHeader(); renderView(); }
   else if (input.id === 'has-recipe') { state.craftable = input.checked; state.modOpen={}; state.modLimits={}; state.itemLimit = 80; renderIndex(); }
   else if (input.dataset.method) { if (input.value) state.recipes[input.dataset.method] = input.value; else delete state.recipes[input.dataset.method]; renderPlan(); }
   else if (input.dataset.member) { state.members[input.dataset.member] = input.value; renderPlan(); }
   else if (input.dataset.owned) { state.inventory[input.dataset.owned] = Math.max(0, Math.min(1000000000, Math.trunc(Number(input.value) || 0))); renderPlan(); }
+  checkpoint();
 });
 document.addEventListener('keydown', event => { if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) { event.preventDefault(); $('#search').focus(); } });
 
@@ -158,14 +220,12 @@ async function start() {
     if (!response.ok) throw new Error('Could not load the recipe catalog.');
     state.catalog = new Catalog(await response.json());
     state.findItems = createItemSearch(state.catalog);
-    history.replaceState(null,'',location.pathname+location.search);
     $('#loaded-count').textContent = fmt(state.catalog.data.recipes.length) + ' recipes loaded';
     const panels=await fetch('./recipe-layouts.json',{cache:'no-store'});
     if(panels.ok)state.layouts=await panels.json();
-    renderIndex();
-    $('.tabs').hidden=true;
-    $('#selected').innerHTML='';
-    $('#view').innerHTML='<p class="empty-selection">Choose an item from the index.</p>';
+    history.scrollRestoration='manual';
+    const page=navigation.start(pageSnapshot(),'item index');
+    navigationReady=true;restorePage(page);
     $('#live-status').textContent = 'Recipe catalog ready.';
   } catch (error) { $('#item-list').innerHTML = '<p class="empty">Catalog unavailable.</p>'; $('#view').innerHTML = `<div class="notice">${html(error.message)}</div>`; }
 }
@@ -178,5 +238,9 @@ document.addEventListener('toggle',event=>{
     const list=target.querySelector('.mod-items');
     if(target.open&&!list.innerHTML){const group=state.modGroups.find(g=>g.name===target.dataset.mod);if(group)list.innerHTML=modItems(group);}
   }
+  checkpoint();
 },true);
+window.addEventListener('popstate',event=>{if(navigationReady)navigation.restore(event.state);});
+window.addEventListener('scroll',saveScroll,{passive:true});
+$('#item-list').addEventListener('scroll',saveScroll,{passive:true});
 start();
