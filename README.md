@@ -4,6 +4,8 @@ Static website for the installed Minecraft 1.6.4 TechIt-ng pack. Recipe data com
 
 The preview is served at http://127.0.0.1:4173/. Fresh visits start with no item selected. The index groups items by mod; newly selected plans start with only their root expanded. Browser Back/Forward and the named Back button restore previous item/tab views, quantities, recipe choices, searches, filters, and tree expansion. Reloading an existing history entry restores that view. Owned inventory remains shared across views during the session. Recipes and reverse uses include a process filter. Plans support quantities, recipe and ore-dictionary alternatives, reusable tools, guaranteed by-products, and owned inventory.
 
+Interchangeable ingredients show their group and selection even when their branch is collapsed (for example, **Any wood planks**). Long pages expose a Back to Top arrow. Reviewed RF items share one material-planning entry across charge states; old variant references still resolve for navigation, favorites, and inventory. Crafting a cell does not generate RF: upgrades retain the input cell's energy.
+
 ## Storage
 
 There is no database server. `dist/catalog.json` is the normalized recipe catalog and `dist/recipe-layouts.json` describes the machine panels. PNG assets live under `dist/images/`. Exact numeric IDs, metadata, and normalized NBT identify item variants. Recipe choices and view state are saved in the tab's browser-history entries. Owned inventory lives in browser memory and resets on reload.
@@ -17,6 +19,7 @@ For the website, only Node.js is needed to validate the committed static files. 
 ```powershell
 npm run build
 node --test tests/*.test.js
+python -m unittest discover -s tests -p '*_test.py'
 python -m http.server 4173 --bind 127.0.0.1 --directory dist
 ```
 
@@ -36,7 +39,7 @@ Run `npm run data:import` (or `python tools/build_runtime.py`) from the original
 
 ## Current coverage
 
-The September 23, 23:46 snapshot provides 24,715 item/block/fluid variants and 50,486 output recipe choices across 49,914 distinct processes. Twelve are smeltery alloying processes. There are 24,614 images, including 24,538 exact game-rendered catalog variants, and 35 integrated recipe panels. Rebuilding after a new capture may change these counts.
+The September 23, 23:46 snapshot provides 24,673 item/block/fluid entries after grouping reviewed RF states, and 50,486 output recipe choices across 49,914 distinct processes. Twelve are smeltery alloying processes. There are 24,572 images, including 24,500 exact game-rendered entries, and 35 integrated recipe panels. Rebuilding after a new capture may change these counts.
 
 The inspected Extra Utilities and Forge Multipart rules generate material-specific recipes for all 970 registered materials. Fences and pipe jackets preserve their exact material NBT. Cutting, thinning, hollowing, filling, and basic recombination expand to the actual source block; saw choices respect cutting strength and count durability across branches. Equivalent bulk and mixed-thickness gluing arrangements are currently represented by their basic recombination paths rather than every possible grid combination.
 
@@ -44,4 +47,4 @@ Alloying is listed before recycling/melting alternatives. Automatic planning fav
 
 Coverage is still incomplete. Some custom/NBT-dependent recipe handlers and directly implemented machine rules need semantic adapters. Captured NEI examples are corroborating evidence, not automatically working production recipes. Fuel, power, and machine construction are separate requirements; probabilistic by-products do not satisfy guaranteed requirements.
 
-Exporter 0.2.0 is installed and its first live inventory capture is imported. The capture produced 24,585 raw-stack images; canonical NBT normalization merges duplicate stack identities into 24,538 rendered catalog variants. Remaining texture previews are labeled separately from inventory renders. The 101 entries without an image comprise 96 transparent road-marking microblocks, four malformed/unconfigured placeholder stacks, and Pig Iron fluid, whose runtime texture name has no matching installed texture. The captured errors remain in `audit/rendered-image-report.json`; no substitute material images are invented. See `exporter/README.md` for capture and import details. No user-supplied image IDs are needed.
+Exporter 0.2.0's live inventory capture is imported. The capture produced 24,585 raw-stack images; canonical NBT normalization initially maps 24,538 rendered variants, with subsequent RF grouping retaining 24,500 rendered entries. The 101 entries without an image comprise 96 transparent road-marking microblocks, four malformed/unconfigured placeholder stacks, and Pig Iron fluid, whose runtime texture name has no matching installed texture. The captured errors remain in `audit/rendered-image-report.json`; no substitute material images are invented. See `exporter/README.md` for capture and import details and `tools/RECIPE_ADAPTERS.md` for the RF upgrade adapter. No user-supplied image IDs are needed.

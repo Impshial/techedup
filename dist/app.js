@@ -1,10 +1,10 @@
-import { Catalog, calculate, key, fromKey } from './planner.js?v=6';
-import { groupItemsByMod, renderRecipeDiagram, sortRecipeMethods } from './recipe-view.js?v=8';
+import { Catalog, calculate, key, fromKey } from './planner.js?v=7';
+import { groupItemsByMod, renderRecipeDiagram, sortRecipeMethods, renderIngredientChoice } from './recipe-view.js?v=9';
 import { createItemSearch } from './search.js?v=1';
 import { capturePage, createNavigation } from './navigation.js?v=3';
 import { createBuildList } from './build-list.js?v=1';
 import { materialListExport } from './material-export.js?v=1';
-import { createFavorites, favoritesStorageKey, renderFavoriteButton } from './favorites.js?v=1';
+import { createFavorites, favoritesStorageKey, renderFavoriteButton } from './favorites.js?v=2';
 
 const $ = selector => document.querySelector(selector);
 const html = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -19,7 +19,7 @@ const buildList = createBuildList();
 const favorites = createFavorites(()=>window.localStorage,message=>{
   $('#favorites-status').textContent=message;
   $('#favorites-status').hidden=!message;
-});
+},ref=>state.catalog?.canonicalRef(ref)||ref);
 function favoriteButton(ref, extraClass = '') {
   return state.catalog.items.has(ref)?renderFavoriteButton(ref,state.catalog.item(ref).name,favorites.has(ref),extraClass):'';
 }
@@ -73,6 +73,9 @@ function restorePage(page) {
   restoringPage=true;
   const {expandedNodes,scrollY,indexScroll,...view}=page;
   Object.assign(state,view,{indexTab:page.indexTab||'all',indexQueries:{all:page.query||'',favorites:'',...page.indexQueries},expandedNodes:new Set(expandedNodes)});
+  if(state.ref)state.ref=state.catalog.canonicalRef(state.ref);
+  if(state.target)state.target=state.catalog.canonicalStack(state.target);
+  state.inventory=state.catalog.canonicalInventory(state.inventory);
   state.query=state.indexQueries[state.indexTab];
   if($('#data-dialog').open) $('#data-dialog').close();
   $('#search').value=state.query;
@@ -135,6 +138,7 @@ function renderIndex() {
   $('#more-items').hidden=true;
 }
 function setTarget(ref, recipeId) {
+  ref=state.catalog.canonicalRef(ref);
   state.ref = ref;
   const methods = state.catalog.forItem(ref);
   const recipe = state.catalog.recipes.get(recipeId);
@@ -143,6 +147,7 @@ function setTarget(ref, recipeId) {
   if (recipe) state.recipes[key(state.target)] = recipe.id;
 }
 function select(ref, recipeId) {
+  ref=state.catalog.canonicalRef(ref);
   if (isGroup(ref)) return showAlternatives({ ref, count: 1 });
   if (ref===state.ref && state.tab==='plan' && !recipeId) return;
   checkpoint();
@@ -162,13 +167,13 @@ function recipeLabel(recipe) {
   const list = [...new Set(recipe.inputs.map(s => state.catalog.item(s.ref).name))];
   return `${recipe.machine || recipe.type} · makes ${amount(recipe.output)} · ${list.slice(0, 3).join(', ')}${list.length > 3 ? '…' : ''}`;
 }
-const reasons = { basic: 'Gather or mine', chosen: 'Obtain separately · your choice', missing: 'No recipe imported', ambiguous: 'Identity needs review', cycle: 'Recipe loop · external supply needed', unresolved: 'No usable member for this ingredient group', invalid: 'Custom or chance-based recipe · review required', limit: 'Expansion limit · review manually', owned: 'Covered by inventory, leftovers, or a reusable tool' };
+const reasons = { basic: 'Gather or mine', chosen: 'Obtain separately · your choice', missing: 'No recipe imported', ambiguous: 'Identity needs review', cycle: 'Recipe loop · external supply needed', unresolved: 'No usable member for this ingredient group', invalid: 'Automatic planning unavailable for this recipe', limit: 'Expansion limit · review manually', owned: 'Covered by inventory, leftovers, or a reusable tool' };
 function renderNode(node, level = 0, path = '0') {
   const identity = key(node.stack), methods = sortRecipeMethods(state.catalog.forStack(node.stack));
-  const options = node.source ? state.catalog.options(node.source) : [];
+  const choice = renderIngredientChoice(state.catalog,node.source,node.stack);
   const description = (node.recipe ? `${node.recipe.machine || node.recipe.type} · ${fmt(node.runs)} batch${node.runs === 1 ? '' : 'es'} × ${amount(node.recipe.output)} output${node.extra ? ` · ${fmt(node.extra)} extra` : ''}` : reasons[node.status]) + (node.reusable ? ' · reusable tool/cast' : '');
-  const line = `<div class="node-row">${icon(node.stack.ref)}<span class="node-name">${html(names(node.stack))}</span>${favoriteButton(node.stack.ref)}<span class="count">${amount({...node.stack,count:node.wanted})}</span></div>`;
-  const controls = `<div class="node-controls">${methods.length ? `<select data-method="${html(identity)}" aria-label="Recipe for ${html(names(node.stack))}"><option value="">Automatic</option><option value="supply"${state.recipes[identity] === 'supply' ? ' selected' : ''}>Obtain separately</option>${methods.map(r => `<option value="${r.id}"${state.recipes[identity] === r.id ? ' selected' : ''}${!r.calculable ? ' disabled' : ''}>${html(recipeLabel(r))}${!r.calculable ? ' · needs review' : ''}</option>`).join('')}</select>` : ''}${options.length > 1 ? `<select data-member="${html(key(node.source))}" aria-label="Choose an equivalent ingredient">${options.map(s => `<option value="${html(key(s))}"${key(s) === identity ? ' selected' : ''}>${html(names(s))}</option>`).join('')}</select>` : ''}<button class="link-button" data-add-owned="${html(identity)}">I have some</button></div>`;
+  const line = `<div class="node-row">${icon(node.stack.ref)}<span class="node-name">${choice || html(names(node.stack))}</span>${favoriteButton(node.stack.ref)}<span class="count">${amount({...node.stack,count:node.wanted})}</span></div>`;
+  const controls = `<div class="node-controls">${methods.length ? `<select data-method="${html(identity)}" aria-label="Recipe for ${html(names(node.stack))}"><option value="">Automatic</option><option value="supply"${state.recipes[identity] === 'supply' ? ' selected' : ''}>Obtain separately</option>${methods.map(r => `<option value="${r.id}"${state.recipes[identity] === r.id ? ' selected' : ''}${!r.calculable ? ' disabled' : ''}>${html(recipeLabel(r))}${!r.calculable ? ' · unavailable' : ''}</option>`).join('')}</select>` : ''}<button class="link-button" data-add-owned="${html(identity)}">I have some</button></div>`;
   const content = `<div class="node-detail">${html(description)}${node.have ? ` · ${fmt(node.have)} owned` : ''}${node.reused ? ` · ${fmt(node.reused)} from leftovers` : ''}</div>${controls}${node.recipe?renderRecipeDiagram(state.catalog,node.recipe,state.layouts,node):''}${node.children.length ? `<div class="tree">${node.children.map((s,i) => renderNode(s, level + 1,path+'.'+i)).join('')}</div>` : ''}`;
   return `<div class="node">${node.children.length ? `<details data-node="${path}"${state.expandedNodes.has(path) ? ' open' : ''}><summary>${line}</summary>${content}</details>` : line + content}</div>`;
 }
@@ -254,7 +259,7 @@ function renderPlan() {
 }
 function recipeCard(recipe) {
   const details=Object.entries(recipe.details||{}).map(([k,v])=>`${html(k)}: ${html(v)}`).join(' · ');
-  return `<article class="recipe-card"><div class="recipe-top"><div><h3>${html(recipe.machine || recipe.type)}</h3><span class="recipe-output-label">${amount(recipe.output)} × ${html(names(recipe.output))}${favoriteButton(recipe.output.ref)}</span></div><button data-use-recipe="${recipe.id}" class="primary"${recipe.calculable?'':' disabled'}>Plan recipe</button></div>${renderRecipeDiagram(state.catalog,recipe,state.layouts)}<details class="recipe-details"><summary>Details</summary>${!recipe.calculable?'<p>Probabilistic output or custom behavior: automatic planning unavailable.</p>':''}${details?`<p>${details}</p>`:''}${(recipe.notes||[]).map(n=>`<p>${html(n)}</p>`).join('')}<p>${recipe.inputs.map(s=>`<button type="button" class="link-button recipe-detail-item" data-item="${html(s.ref)}">${amount(s)} × ${html(names(s))}${s.toolDamage?` (${s.toolDamage} durability per craft)`:s.consume===false?' (reusable)':''}</button>`).join('<br>')}</p><p class="id">${html(recipe.source)}</p>${recipe.output.nbt?`<code>${html(recipe.output.nbt)}</code>`:''}</details></article>`;
+  return `<article class="recipe-card"><div class="recipe-top"><div><h3>${html(recipe.machine || recipe.type)}</h3><span class="recipe-output-label">${amount(recipe.output)} × ${html(names(recipe.output))}${favoriteButton(recipe.output.ref)}</span></div><button data-use-recipe="${recipe.id}" class="primary"${recipe.calculable?'':' disabled'}>Plan recipe</button></div>${renderRecipeDiagram(state.catalog,recipe,state.layouts)}<details class="recipe-details"><summary>Details</summary>${!recipe.calculable?`<p>${(recipe.output.chance??1)<1?'Chance-based output: automatic planning unavailable.':'Automatic planning is not supported for this recipe yet.'}</p>`:''}${details?`<p>${details}</p>`:''}${(recipe.notes||[]).map(n=>`<p>${html(n)}</p>`).join('')}<p>${recipe.inputs.map(s=>`<button type="button" class="link-button recipe-detail-item" data-item="${html(s.ref)}">${amount(s)} × ${html(names(s))}${s.toolDamage?` (${s.toolDamage} durability per craft)`:s.consume===false?' (reusable)':''}</button>`).join('<br>')}</p><p class="id">${html(recipe.source)}</p>${recipe.output.nbt?`<code>${html(recipe.output.nbt)}</code>`:''}</details></article>`;
 }
 function renderView() {
   document.querySelectorAll('[data-tab]').forEach(button => { button.classList.toggle('active', button.dataset.tab === state.tab); button.setAttribute('aria-current', button.dataset.tab === state.tab ? 'page' : 'false'); });
@@ -363,6 +368,7 @@ async function start() {
     const response = await fetch('./catalog.json', { cache: 'no-store' });
     if (!response.ok) throw new Error('Could not load the recipe catalog.');
     state.catalog = new Catalog(await response.json());
+    favorites.refresh();
     state.findItems = createItemSearch(state.catalog);
     $('#loaded-count').textContent = fmt(state.catalog.data.recipes.length) + ' recipes loaded';
     const panels=await fetch('./recipe-layouts.json',{cache:'no-store'});
@@ -390,5 +396,12 @@ window.addEventListener('storage',event=>{
   if(favorites.refresh() && state.catalog) {renderIndex();syncFavoriteButtons();}
 });
 window.addEventListener('scroll',saveScroll,{passive:true});
+function updateBackToTop() { $('#back-to-top').hidden=window.scrollY<200; }
+window.addEventListener('scroll',updateBackToTop,{passive:true});
+window.addEventListener('resize',updateBackToTop);
+$('#back-to-top').addEventListener('click',()=>{
+  window.scrollTo({top:0,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+});
+updateBackToTop();
 $('#item-list').addEventListener('scroll',saveScroll,{passive:true});
 start();

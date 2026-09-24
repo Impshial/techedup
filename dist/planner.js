@@ -6,6 +6,7 @@ export const titleCase = text => text.replace(/([a-z])([A-Z])/g, '$1 $2').replac
 export class Catalog {
   constructor(data) {
     this.data = data;
+    this.aliases = data.aliases || {};
     this.items = new Map(data.items.map(item => [item.ref, item]));
     this.recipes = new Map(data.recipes.map(r => [r.id, r]));
     this.outputs = new Map(); this.outputRefs = new Map(); this.inputRefs = new Map();
@@ -62,12 +63,30 @@ export class Catalog {
     }
   }
   item(ref) {
+    ref = this.canonicalRef(ref);
     return this.items.get(ref) || { ref, name: ref.startsWith('ore:') ? titleCase(ref.slice(4)) : ref.startsWith('alternatives:') ? 'Equivalent ingredients' : ref.endsWith(':*') ? (this.items.get(base(ref)+':0')?.name || base(ref)) + ' (any variant)' : ref, kind: ref.startsWith('ore:') ? 'ore group' : 'item' };
   }
   roles(ref) { return [...new Set([...(this.oreMembership.get(ref) || []), ...(this.oreMembership.get(ref.replace(/@[^:]+$/, '')) || []), ...(this.oreMembership.get(base(ref) + ':*') || [])])]; }
-  forItem(ref) { return this.outputRefs.get(ref) || []; }
-  forStack(stack) { return this.outputs.get(key(stack)) || []; }
+  canonicalRef(ref) { return this.aliases[ref] || ref; }
+  canonicalStack(stack) {
+    const ref = this.canonicalRef(stack.ref);
+    if (ref === stack.ref) return stack;
+    const result = { ...stack, ref }; delete result.nbt;
+    if (this.items.get(ref)?.nbt) result.nbt = this.items.get(ref).nbt;
+    return result;
+  }
+  canonicalInventory(inventory = {}) {
+    const result = {};
+    for (const [id, count] of Object.entries(inventory)) {
+      const canonical = key(this.canonicalStack(fromKey(id)));
+      if (Number.isSafeInteger(count) && count > 0) result[canonical] = (result[canonical] || 0) + count;
+    }
+    return result;
+  }
+  forItem(ref) { return this.outputRefs.get(this.canonicalRef(ref)) || []; }
+  forStack(stack) { return this.outputs.get(key(this.canonicalStack(stack))) || []; }
   options(stack) {
+    stack = this.canonicalStack(stack);
     const identity = key(stack);
     if (this.optionsCache.has(identity)) return this.optionsCache.get(identity);
     let values;
@@ -86,6 +105,7 @@ export class Catalog {
     return 1 + Math.max(0, ...values);
   }
   uses(ref) {
+    ref = this.canonicalRef(ref);
     const refs = new Set([ref, base(ref) + ':*', ...this.roles(ref)]);
     const ids = new Set([...refs].flatMap(r => [...(this.inputRefs.get(r) || [])]));
     return [...new Map([...ids].map(id => this.recipes.get(id)).map(r => [r.processId || r.id,r])).values()];
@@ -96,7 +116,7 @@ export function calculate(catalog, target, amount, preferences = {}) {
   if (!Number.isSafeInteger(amount) || amount < 1 || amount > 1000000) throw new Error('Choose a whole number from 1 to 1,000,000.');
   const choices = preferences.recipes || {};
   const members = preferences.members || {};
-  const inventory = new Map(Object.entries(preferences.inventory || {}).filter(([, count]) => Number.isSafeInteger(count) && count > 0));
+  const inventory = new Map(Object.entries(catalog.canonicalInventory(preferences.inventory)));
   const extras = new Map(), totals = new Map(), warnings = new Set(), steps = [], used = new Map(), reusable = new Map(), durability = new Map();
   let nodes = 0;
   function draw(pool, id, wanted) {
@@ -138,7 +158,7 @@ export function calculate(catalog, target, amount, preferences = {}) {
     if (!methods.length) return supply(node, 'missing');
     const valid = methods.filter(r => r.calculable);
     const selected = methods.find(r => r.id === preferred);
-    if (selected && !selected.calculable || !valid.length) { warnings.add('This branch has a probabilistic output, invalid quantities, or custom behavior that still needs verification.'); return supply(node, 'invalid'); }
+    if (selected && !selected.calculable || !valid.length) { warnings.add('Automatic planning is unavailable for this recipe.'); return supply(node, 'invalid'); }
     const score = recipe => (catalog.recipeDepth(recipe) === Infinity ? 10000 : catalog.recipeDepth(recipe)) + recipe.inputs.length / 100;
     const recipe = selected || valid.slice().sort((a, b) => score(a) - score(b))[0];
     node.recipe = recipe; node.runs = Math.ceil(node.need / recipe.output.count);
@@ -188,7 +208,7 @@ export function calculate(catalog, target, amount, preferences = {}) {
     steps.push({ stack, recipe: recipe.id, runs: node.runs, produced: node.produced });
     return node;
   }
-  const tree = expand(target, amount, new Set(), 0);
+  const tree = expand(catalog.canonicalStack(target), amount, new Set(), 0);
   return { tree, materials: [...totals.values()].map(t => ({ ...t, reasons: [...t.reasons] })), warnings: [...warnings], steps,
     leftovers: [...extras].filter(([, count]) => count).map(([id, count]) => ({ stack: fromKey(id), count })),
     usedInventory: [...used].map(([id, count]) => ({ stack: fromKey(id), count })) };

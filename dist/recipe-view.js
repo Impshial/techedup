@@ -8,6 +8,19 @@ export function groupItemsByMod(items) {
   for (const item of items) { const mod=item.mod || 'Unassigned'; if(!groups.has(mod))groups.set(mod,[]);groups.get(mod).push(item); }
   return [...groups].sort(([a],[b])=>a.localeCompare(b)).map(([name,items])=>({name,items:items.sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true})||a.ref.localeCompare(b.ref))}));
 }
+export function ingredientGroupLabel(catalog, stack) {
+  if (stack.ref==='ore:plankWood') return 'Any wood planks';
+  if (stack.ref==='ore:logWood') return 'Any wood log';
+  return catalog.item(stack.ref).name;
+}
+export function renderIngredientChoice(catalog, source, selected) {
+  if (!source) return '';
+  const options=catalog.options(source);
+  if (options.length<2) return '';
+  const label=ingredientGroupLabel(catalog,source);
+  const identity=s=>s.ref+(s.nbt&&!s.ref.includes('@')?'\u001f'+s.nbt:'');
+  return `<label class="ingredient-choice"><span>${esc(label)}</span><select data-member="${esc(identity(source))}" aria-label="Choose ${esc(label.toLowerCase())}">${options.map(s=>`<option value="${esc(identity(s))}"${identity(s)===identity(selected)?' selected':''}>${esc(catalog.item(s.ref).name)}</option>`).join('')}</select></label>`;
+}
 export function diagramSlots(recipe,layout) {
   let inputs=recipe.inputs;
   if(layout.grid) {
@@ -28,7 +41,8 @@ export function renderRecipeDiagram(catalog,recipe,layouts,node=null) {
   }
   function contents(s) {
     const shown=displayStack(s),item=catalog.item(shown.ref),fluid=item.kind==='fluid';
-    const label=`${s.count.toLocaleString()}${fluid?' mB':''} × ${item.name}${s.toolDamage?` (${s.toolDamage} durability per craft)`:s.consume===false?' (reusable)':''}${s.chance!==undefined&&s.chance<1?` (${s.chance*100}% chance)`:''}`;
+    const group=catalog.options(s).length>1?`${ingredientGroupLabel(catalog,s)} · `:'';
+    const label=`${group}${s.count.toLocaleString()}${fluid?' mB':''} × ${item.name}${s.toolDamage?` (${s.toolDamage} durability per craft)`:s.consume===false?' (reusable)':''}${s.chance!==undefined&&s.chance<1?` (${s.chance*100}% chance)`:''}`;
     const color=item.color==null?'#647f9b':'#'+(item.color&0xffffff).toString(16).padStart(6,'0');
     return `<button class="diagram-item${fluid?' fluid':''}" data-item="${esc(s.ref)}" title="${esc(label)}" aria-label="${esc(label)}">${item.image?`<img src="${esc(item.image)}" alt="" loading="lazy">`:fluid?`<span class="fluid-fill" style="background:${color}"></span>`:'<span class="unknown">?</span>'}${!fluid&&s.count>1?`<span class="diagram-count">${s.count.toLocaleString()}</span>`:''}${s.consume===false&&!s.toolDamage?'<span class="diagram-reusable" aria-hidden="true">∞</span>':''}</button>`;
   }

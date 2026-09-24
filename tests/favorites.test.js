@@ -28,6 +28,20 @@ test('changes from another tab are merged before saving and clearing storage upd
   storage.removeItem(favoritesStorageKey);b.refresh();assert.deepEqual(b.refs,[]);
 });
 
+test('saved charge variants resolve to one favorite across tabs and sessions',()=>{
+  const storage=memoryStorage();
+  storage.setItem(favoritesStorageKey,JSON.stringify({version:1,refs:['empty','full','microblock']}));
+  const canonical=ref=>['empty','full'].includes(ref)?'cell':ref;
+  const first=createFavorites(()=>storage,()=>{},canonical);
+  assert.deepEqual(first.refs,['cell','microblock']);
+  assert.equal(first.has('full'),true);
+  first.toggle('cell');
+  const second=createFavorites(()=>storage,()=>{},canonical);
+  assert.deepEqual(second.refs,['microblock']);
+  second.toggle('full');first.refresh();
+  assert.deepEqual(first.refs,['microblock','cell']);
+});
+
 test('blocked storage and malformed saved data report an error without claiming a favorite was saved',()=>{
   const messages=[],storage=memoryStorage();
   const broken=createFavorites(()=>{throw new Error('Blocked');},message=>messages.push(message));

@@ -198,6 +198,16 @@ class Importer:
         # Reject classes known to add important matching/consumption conditions until reviewed.
         special=('Unstable','DifficultySpecific','RecipeGBEnchanting','RecipeMagicalWood','ShapelessToolRecipe','JetpackUpgradingRecipe','UpgradeRecipe','ShapedOreNBTRecipe','ShapelessOreNBTRecipe')
         conditional=any(x in c for x in special)
+        if c=='cofh.util.UpgradeRecipe':
+            # CoFHCore 2.0.0.5 inherits ordinary ShapedOreRecipe matching.
+            # Its only override copies the upgrade slot's NBT to the result.
+            # Plan the default item; RF state is grouped after image import.
+            slot=f.get('upgradeSlot',4)
+            if not isinstance(slot,int) or not 0<=slot<len(slots) or not isinstance(slots[slot],dict):
+                raise ValueError('Invalid CoFH upgrade slot')
+            normalized[slot]=self.stack(slots[slot],count=1)
+            conditional=False
+            note.append('Retains the upgrade ingredient’s stored contents and settings.')
         if conditional:note.append('Custom matching, NBT transfer, or tool behavior needs verification before automatic planning.')
         grid=[normalized[i:i+width] for i in range(0,len(normalized),width)] if width else None
         self.add(source,'Crafting' if source=='minecraft.crafting' else 'Galacticraft compressor',[s for s in normalized if s], [output],grid=grid,notes=note,calculable=not conditional,crafting=source=='minecraft.crafting')
