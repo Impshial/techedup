@@ -33,7 +33,7 @@ You can rename exports to distinguish projects; keep the `.techit.json` ending. 
 - Item icons use the game's renderer and exact exported metadata/NBT, including microblock materials. Fluid amounts are in mB. Item totals also show stack counts where useful.
 - The inventory tab or **Inventory** button returns to the inventory; Escape closes the screen.
 
-Progress is manual: version 0.1.0 does not count inventory contents or craft items. Each export is a snapshot of the calculator's displayed totals. The mod neither recalculates recipes nor connects to the website. Use the same pack/configuration as the calculator because numeric IDs can differ between installations.
+Progress is manual: version 0.1.0 does not count inventory contents or craft items. Each export is a snapshot of the calculator's **processed material totals**, even when the website's Ore Level display is checked. The mod neither recalculates recipes nor connects to the website. Use the same pack/configuration as the calculator because numeric IDs can differ between installations.
 
 Progress files live under `.progress`, keyed by the export's SHA-256. Renaming an unchanged export preserves progress. Changing its contents starts a new checklist. Original exports are never modified, and deleting the mod leaves the lists and progress available.
 

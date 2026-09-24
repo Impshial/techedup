@@ -19,7 +19,7 @@ UTF-8 JSON with a `.techit.json` filename. Generate it using **Export → Minecr
 }
 ```
 
-The example illustrates the envelope and one target; real exports contain the calculated material rows. `scope` is `current` or `build`. `plans` preserves separate target entries; `materials` contains the displayed aggregated totals. This is a checklist, not a recipe graph.
+The example illustrates the envelope and one target; real exports contain the calculated material rows. `scope` is `current` or `build`. `plans` preserves separate target entries; `materials` contains aggregated processed-material totals, independent of the website's Ore Level display setting. This is a checklist, not a recipe graph.
 
 Every row has `ref`, `name`, `quantity`, `kind`, and `unit`. Quantities are positive safe integers, at most 9,007,199,254,740,991. Materials may also include `reasons`, copied from the planner.
 

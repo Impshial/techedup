@@ -6,6 +6,8 @@ The preview is served at http://127.0.0.1:4173/. Fresh visits start with no item
 
 Interchangeable ingredients show their group and selection even when their branch is collapsed (for example, **Any wood planks**). Long pages expose a Back to Top arrow. Reviewed RF items share one material-planning entry across charge states; old variant references still resolve for navigation, favorites, and inventory. Crafting a cell does not generate RF: upgrades retain the input cell's energy.
 
+Total materials starts at the processed level: ingots, dusts, crystals, planks, fluids, and similar resource forms. Components still expand into their materials. **Ore Level** switches to the full raw requirements and labels each raw material with the processed materials it contributes to, including reused processing leftovers. Materials used directly remain in either view. The page and Build list popup share this switch for the current session; new sessions start unchecked. Saved plans retain both calculations, recipe choices, and inventory deductions, so switching the combined list does not replan earlier entries. Copy follows the displayed view; every export format always uses processed material totals.
+
 ## Storage
 
 There is no database server. `dist/catalog.json` is the normalized recipe catalog and `dist/recipe-layouts.json` describes the machine panels. PNG assets live under `dist/images/`. Exact numeric IDs, metadata, and normalized NBT identify item variants. Recipe choices and view state are saved in the tab's browser-history entries. Owned inventory lives in browser memory and resets on reload.

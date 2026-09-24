@@ -3,6 +3,21 @@ export const fromKey = value => { const [ref, ...nbt] = value.split('\u001f'); r
 export const base = ref => ref.replace(/@[^:]+$/, '').replace(/:(?:\d+|\*)$/, '');
 export const titleCase = text => text.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[._]/g, ' ').replace(/^./, x => x.toUpperCase());
 
+// Resource forms are supply boundaries in the processed-material view. Components
+// (gears, circuits, tools and machines) still expand through their chosen recipes.
+export function isProcessedMaterial(catalog, stack, recipe = null) {
+  if (catalog.raw.has(stack.ref)) return false;
+  return stack.ref.startsWith('fluid:')
+    || catalog.roles(stack.ref).some(role => /^ore:(?:ingot|dust|gem|crystal|nugget|plate|sheet)[A-Z]|^ore:(?:plankWood|glass|glassHardened|itemRubber)$/.test(role))
+    // Several AE/Tinkers materials have no ore tag. Match whole material names,
+    // not microblocks or components whose names merely contain a material.
+    || /(?:^|\s)(?:ingot|dust|powder|crystal|gem|nugget|plate|planks|brick)$|^(?:silicon|rubber|glass|plastic)$/i.test(catalog.item(stack.ref).name)
+    // Untagged direct refining outputs are also materials. A furnace recipe
+    // alone is insufficient: processors smelt assemblies and must still expand.
+    || /^(?:Furnace|Redstone furnace|ProjectRed electric furnace|Pulverizer|Quartz grindstone|Sawmill)$/.test(recipe?.machine || recipe?.type || '')
+      && recipe.inputs.length > 0 && recipe.inputs.filter(input=>input.consume!==false).every(input=>catalog.options(input).some(option=>catalog.raw.has(option.ref)));
+}
+
 export class Catalog {
   constructor(data) {
     this.data = data;
@@ -161,6 +176,7 @@ export function calculate(catalog, target, amount, preferences = {}) {
     if (selected && !selected.calculable || !valid.length) { warnings.add('Automatic planning is unavailable for this recipe.'); return supply(node, 'invalid'); }
     const score = recipe => (catalog.recipeDepth(recipe) === Infinity ? 10000 : catalog.recipeDepth(recipe)) + recipe.inputs.length / 100;
     const recipe = selected || valid.slice().sort((a, b) => score(a) - score(b))[0];
+    if (preferences.materialLevel === 'processed' && level > 0 && isProcessedMaterial(catalog, stack, recipe)) return supply(node, 'processed');
     node.recipe = recipe; node.runs = Math.ceil(node.need / recipe.output.count);
     node.produced = node.runs * recipe.output.count; node.extra = node.produced - node.need; node.status = 'craft';
     const nextPath = new Set(path); nextPath.add(id);
@@ -212,4 +228,46 @@ export function calculate(catalog, target, amount, preferences = {}) {
   return { tree, materials: [...totals.values()].map(t => ({ ...t, reasons: [...t.reasons] })), warnings: [...warnings], steps,
     leftovers: [...extras].filter(([, count]) => count).map(([id, count]) => ({ stack: fromKey(id), count })),
     usedInventory: [...used].map(([id, count]) => ({ stack: fromKey(id), count })) };
+}
+
+export function calculateMaterialViews(catalog, target, amount, preferences = {}) {
+  const ore = calculate(catalog, target, amount, { ...preferences, materialLevel: 'ore' });
+  const products = new Map(), extraOrigins = new Map();
+  function takeOrigins(id, count) {
+    const sources = new Set(), batches = extraOrigins.get(id) || [];
+    while(count > 0 && batches.length) {
+      const batch = batches[0], taken = Math.min(count, batch.count);
+      for(const source of batch.sources) sources.add(source);
+      count -= taken;batch.count -= taken;if(!batch.count)batches.shift();
+    }
+    return sources;
+  }
+  function saveOrigins(stack, count, sources) {
+    if(!count)return;
+    const id=key(stack), batches=extraOrigins.get(id) || [];
+    batches.push({count,sources:new Set(sources)});extraOrigins.set(id,batches);
+  }
+  function trace(node, product = null, root = true) {
+    // Retain the outer material (ingot), rather than replacing it with each
+    // intermediate along its processing chain (dust, molten metal, etc.).
+    if (!product && !root && node.recipe && isProcessedMaterial(catalog, node.stack, node.recipe)) product = node.stack;
+    const sources=takeOrigins(key(node.stack),node.reused || 0), fresh=new Set();
+    if(node.recipe) {
+      for(const child of node.children) for(const source of trace(child,product,false)) fresh.add(source);
+      saveOrigins(node.stack,node.extra,fresh);
+      for(const out of node.recipe.outputs || []) if(key(out)!==key(node.stack) && (out.chance ?? 1)===1) saveOrigins(out,out.count*node.runs,fresh);
+      for(const out of node.recipe.returns || []) saveOrigins(out,out.count*node.runs,fresh);
+      for(const source of fresh)sources.add(source);
+    } else if(node.need) sources.add(key(node.stack));
+    if(product) for(const source of sources) {
+      const targets=products.get(source) || new Map();
+      if(key(product)!==source)targets.set(key(product),product);
+      products.set(source,targets);
+    }
+    return sources;
+  }
+  trace(ore.tree);
+  ore.materials = ore.materials.map(material => ({ ...material, products: [...(products.get(key(material.stack))?.values() || [])] }));
+  const processed = calculate(catalog, target, amount, { ...preferences, materialLevel: 'processed' });
+  return { ore, processed };
 }

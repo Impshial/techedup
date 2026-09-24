@@ -1,15 +1,15 @@
-import { Catalog, calculate, key, fromKey } from './planner.js?v=7';
+import { Catalog, calculateMaterialViews, key, fromKey } from './planner.js?v=8';
 import { groupItemsByMod, renderRecipeDiagram, sortRecipeMethods, renderIngredientChoice } from './recipe-view.js?v=9';
 import { createItemSearch } from './search.js?v=1';
 import { capturePage, createNavigation } from './navigation.js?v=3';
-import { createBuildList } from './build-list.js?v=1';
+import { createBuildList } from './build-list.js?v=2';
 import { materialListExport } from './material-export.js?v=2';
 import { createFavorites, favoritesStorageKey, renderFavoriteButton } from './favorites.js?v=2';
 
 const $ = selector => document.querySelector(selector);
 const html = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = n => Number(n).toLocaleString();
-const state = { catalog: null, ref: null, quantity: 1, tab: 'plan', indexTab: 'all', query: '', indexQueries: {all: '', favorites: ''}, craftable: false, itemLimit: 80, recipeLimit: 40, process: '', recipes: {}, members: {}, inventory: {}, result: null, target: null, layouts: {}, modOpen: {}, modLimits: {}, modGroups: [], expandedNodes: new Set(['0']) };
+const state = { catalog: null, ref: null, quantity: 1, tab: 'plan', indexTab: 'all', query: '', indexQueries: {all: '', favorites: ''}, craftable: false, itemLimit: 80, recipeLimit: 40, process: '', recipes: {}, members: {}, inventory: {}, result: null, materialViews: null, oreLevel: false, target: null, layouts: {}, modOpen: {}, modLimits: {}, modGroups: [], expandedNodes: new Set(['0']) };
 const names = stack => state.catalog.item(stack.ref).name;
 const amount = stack => fmt(stack.count) + (stack.ref.startsWith('fluid:') ? ' mB' : '');
 const isGroup = ref => ref.startsWith('ore:') || ref.startsWith('alternatives:') || ref.endsWith(':*');
@@ -181,15 +181,34 @@ function renderInventory() {
   return `<section class="card inventory"><details${Object.keys(state.inventory).length?' open':''}><summary>Materials you already have</summary><label for="inventory-search">Add an owned item</label><input id="inventory-search" type="search" placeholder="Search your materials…" autocomplete="off"><div id="inventory-matches"></div>${Object.entries(state.inventory).map(([id, count]) => `<div class="owned-row"><span>${html(names(fromKey(id)))}</span><input type="number" min="0" max="1000000000" value="${count}" step="1" data-owned="${html(id)}" aria-label="Owned ${html(names(fromKey(id)))}"><button data-remove-owned="${html(id)}" aria-label="Remove owned ${html(names(fromKey(id)))}">×</button></div>`).join('')}${Object.keys(state.inventory).length ? '<button id="clear-inventory" class="link-button">Clear inventory · plan from scratch</button>' : ''}</details></section>`;
 }
 function materialRows(materials) {
-  return materials.map(s=>`<div class="material-row">${icon(s.stack.ref)}<span class="name">${html(names(s.stack))}<span class="supply-type">${html(s.reasons.map(r=>reasons[r]).join('; '))}</span></span>${favoriteButton(s.stack.ref)}<span class="count">${amount({...s.stack,count:s.count})}</span></div>`).join('');
+  return materials.map(s=>`<div class="material-row">${icon(s.stack.ref)}<span class="name">${html(names(s.stack))}${materialDescription(s)?`<span class="supply-type">${html(materialDescription(s))}</span>`:''}</span>${favoriteButton(s.stack.ref)}<span class="count">${amount({...s.stack,count:s.count})}</span></div>`).join('');
+}
+const currentMaterialView = () => state.materialViews?.[state.oreLevel?'ore':'processed'];
+function materialDescription(material) {
+  if(state.oreLevel && material.products?.length) return '→ '+[...new Set(material.products.map(names))].sort().join(', ');
+  return material.reasons.map(reason=>reason==='processed'?'':reason==='basic'?'Used directly':reasons[reason]).filter(Boolean).join('; ');
+}
+function oreLevelControl(scope) {
+  return `<label class="ore-level"><input type="checkbox" data-ore-level="${scope}"${state.oreLevel?' checked':''}> Ore Level</label>`;
+}
+function setOreLevel(checked) {
+  state.oreLevel=checked;
+  if(state.tab==='plan' && state.materialViews && state.ref) renderMaterials();
+  if($('#data-dialog').open && $('#data-dialog').classList.contains('build-dialog')) {
+    const materials=buildList.total(state.oreLevel).materials.sort((a,b)=>names(a.stack).localeCompare(names(b.stack)));
+    $('.build-materials').innerHTML=materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>';
+    $('.build-total-heading small').textContent=`${materials.length} types`;
+    $('#copy-build').textContent='Copy total';$('#build-copy-fallback').hidden=true;
+  }
+  document.querySelectorAll('[data-ore-level]').forEach(input=>{input.checked=state.oreLevel;});
 }
 function updateBuildControls() {
-  $('#build-list-open').hidden=!buildList.size;
+  document.querySelectorAll('[data-view-build]').forEach(button=>{button.hidden=!buildList.size;});
   document.querySelectorAll('[data-build-count]').forEach(label=>{label.textContent=fmt(buildList.size);});
 }
 function addToBuildList() {
   if(!state.result) return;
-  buildList.add(state.target,state.quantity,state.result);
+  buildList.add(state.target,state.quantity,currentMaterialView(),state.materialViews);
   updateBuildControls();
   const button=$('#add-build');
   button.textContent='Added to build list';
@@ -200,9 +219,9 @@ function exportControl(scope) {
   return `<details id="${scope}-export-menu" class="material-export" data-export-scope="${scope}"><summary aria-label="Export ${scope==='current'?'current material list':'build list'}">Export <span aria-hidden="true">▾</span></summary><div class="export-options"><button type="button" data-material-export="minecraft">Minecraft</button><button type="button" data-material-export="json">JSON</button><button type="button" data-material-export="csv">CSV</button><button type="button" data-material-export="markdown">Markdown Checklist</button></div></details>`;
 }
 function showBuildList() {
-  const entries=buildList.entries,total=buildList.total();
+  const entries=buildList.entries,total=buildList.total(state.oreLevel);
   const materials=total.materials.sort((a,b)=>names(a.stack).localeCompare(names(b.stack)));
-  const content=entries.length?`<div class="build-scroll"><div class="build-plans-heading"><span>${entries.length} plan${entries.length===1?'':'s'}</span><button id="clear-build" class="link-button">Clear list</button></div><div class="build-plans">${entries.map(entry=>`<div class="build-entry">${icon(entry.target.ref)}<span class="name">${html(names(entry.target))}</span>${favoriteButton(entry.target.ref)}<span class="count">${amount({...entry.target,count:entry.quantity})}</span><button class="remove-build" data-remove-build="${entry.id}" aria-label="Remove ${html(names(entry.target))} from build list">×</button></div>`).join('')}</div><div class="build-total-heading"><h3>Total materials</h3><small>${materials.length} types</small></div>${materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>'}</div><div class="build-dialog-actions"><div class="build-action-buttons"><button id="copy-build" class="primary">Copy total</button>${exportControl('build')}</div><p id="build-export-error" class="export-error" role="alert" hidden></p><div id="build-copy-fallback" hidden></div></div>`:'<p class="help build-empty">Your build list is empty.</p>';
+  const content=entries.length?`<div class="build-scroll"><div class="build-plans-heading"><span>${entries.length} plan${entries.length===1?'':'s'}</span><button id="clear-build" class="link-button">Clear list</button></div><div class="build-plans">${entries.map(entry=>`<div class="build-entry">${icon(entry.target.ref)}<span class="name">${html(names(entry.target))}</span>${favoriteButton(entry.target.ref)}<span class="count">${amount({...entry.target,count:entry.quantity})}</span><button class="remove-build" data-remove-build="${entry.id}" aria-label="Remove ${html(names(entry.target))} from build list">×</button></div>`).join('')}</div><div class="build-total-heading"><h3>Total materials</h3>${oreLevelControl('build')}<small>${materials.length} types</small></div><div class="build-materials">${materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>'}</div></div><div class="build-dialog-actions"><div class="build-action-buttons"><button id="copy-build" class="primary">Copy total</button>${exportControl('build')}</div><p id="build-export-error" class="export-error" role="alert" hidden></p><div id="build-copy-fallback" hidden></div></div>`:'<p class="help build-empty">Your build list is empty.</p>';
   openDialog('Build list',content,'build-dialog');
 }
 function removeFromBuildList(id) {
@@ -215,8 +234,8 @@ function removeFromBuildList(id) {
   $('#live-status').textContent=`Removed ${name} from the build list.`;
 }
 async function copyBuildList() {
-  const total=buildList.total();
-  const lines=['Build list',...buildList.entries.map(entry=>`${amount({...entry.target,count:entry.quantity})} × ${names(entry.target)}`),'','Total materials',...total.materials.sort((a,b)=>names(a.stack).localeCompare(names(b.stack))).map(s=>`${amount({...s.stack,count:s.count})} × ${names(s.stack)}${s.reasons.some(r=>r!=='basic')?' — '+s.reasons.map(r=>reasons[r]).join('; '):''}`),...(!total.materials.length?['Covered by your inventory.']:[]),...(total.warnings.length?['',...total.warnings]:[])];
+  const total=buildList.total(state.oreLevel);
+  const lines=['Build list',...buildList.entries.map(entry=>`${amount({...entry.target,count:entry.quantity})} × ${names(entry.target)}`),'','Total materials',...total.materials.sort((a,b)=>names(a.stack).localeCompare(names(b.stack))).map(s=>`${amount({...s.stack,count:s.count})} × ${names(s.stack)}${materialDescription(s)?' — '+materialDescription(s):''}`),...(!total.materials.length?['Covered by your inventory.']:[]),...(total.warnings.length?['',...total.warnings]:[])];
   const text=lines.join('\n'),button=$('#copy-build');
   try {
     await navigator.clipboard.writeText(text);
@@ -236,7 +255,8 @@ function exportMaterials(format,menu) {
   if(current?!state.result:!buildList.size)return;
   try {
     const entries=current?[{target:state.target,quantity:state.quantity}]:buildList.entries;
-    const materials=current?state.result.materials:buildList.total().materials;
+    // Exports always contain processed materials, independent of the display toggle.
+    const materials=current?state.materialViews.processed.materials:buildList.total(false).materials;
     const file=materialListExport(format,entries,materials,names,scope,state.catalog);
     const url=URL.createObjectURL(new Blob([file.content],{type:file.type}));
     const link=document.createElement('a');
@@ -251,12 +271,24 @@ function exportMaterials(format,menu) {
   }
 }
 function renderPlan() {
-  state.result=null;
-  try {state.result=calculate(state.catalog,state.target,state.quantity,state);}
+  state.result=null;state.materialViews=null;
+  try {state.materialViews=calculateMaterialViews(state.catalog,state.target,state.quantity,state);state.result=state.materialViews.ore;}
   catch(error){$('#view').innerHTML=`<div class="notice">${html(error.message)}</div>`;return;}
-  const result=state.result,materials=result.materials.slice().sort((a,b)=>names(a.stack).localeCompare(names(b.stack)));
-  $('#view').innerHTML=`<div class="plan-layout"><section class="card"><div class="card-head"><h3>Crafting & processing tree</h3>${quantityControl()}</div><div class="card-body">${renderNode(result.tree)}</div></section><div class="supplies"><section class="card materials-card"><div class="card-head"><h3>Total materials</h3><small>${materials.length} types</small></div><div class="card-body">${materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>'}<div class="material-add-actions"><button id="add-build" class="primary" title="Add the material quantities currently shown">Add to build list</button>${exportControl('current')}</div><p id="current-export-error" class="export-error" role="alert" hidden></p><div class="material-list-actions"><button id="copy-list" class="link-button">Copy only this list</button><button class="link-button" data-view-build>View total · <span data-build-count>${buildList.size}</span></button></div></div>${result.leftovers.length?`<details class="leftovers"><summary>Leftovers & by-products</summary>${result.leftovers.map(s=>`<div class="named-item">${amount({...s.stack,count:s.count})} × ${html(names(s.stack))}</div>`).join('')}</details>`:''}</section>${renderInventory()}</div></div>`;
+  const result=state.result;
+  $('#view').innerHTML=`<div class="plan-layout"><section class="card"><div class="card-head"><h3>Crafting & processing tree</h3>${quantityControl()}</div><div class="card-body">${renderNode(result.tree)}</div></section><div class="supplies"><section class="card materials-card"></section>${renderInventory()}</div></div>`;
+  renderMaterials();
 }
+function renderMaterials() {
+  const result=currentMaterialView(),materials=result.materials.slice().sort((a,b)=>names(a.stack).localeCompare(names(b.stack)));
+  const card=$('.materials-card'),leftoversOpen=$('.leftovers')?.open;
+  if(!card.querySelector('.card-head'))card.innerHTML=`<div class="card-head materials-heading"><h3>Total materials</h3>${oreLevelControl('current')}<small></small></div><div class="card-body"></div>`;
+  card.querySelector('[data-ore-level]').checked=state.oreLevel;
+  card.querySelector('.card-head small').textContent=`${materials.length} types`;
+  card.querySelector('.card-body').innerHTML=`${materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>'}<div class="material-add-actions"><button id="add-build" class="primary" title="Add this plan's material quantities">Add to build list</button>${exportControl('current')}</div><p id="current-export-error" class="export-error" role="alert" hidden></p><div class="material-list-actions"><button id="copy-list" class="link-button">Copy only this list</button><button class="link-button" data-view-build${buildList.size?'':' hidden'}>View total · <span data-build-count>${buildList.size}</span></button></div>`;
+  card.querySelector('.leftovers')?.remove();
+  if(result.leftovers.length)card.insertAdjacentHTML('beforeend',`<details class="leftovers"${leftoversOpen?' open':''}><summary>Leftovers & by-products</summary><ul class="leftover-list">${result.leftovers.map(s=>`<li>${amount({...s.stack,count:s.count})} × ${html(names(s.stack))}</li>`).join('')}</ul></details>`);
+}
+
 function recipeCard(recipe) {
   const details=Object.entries(recipe.details||{}).map(([k,v])=>`${html(k)}: ${html(v)}`).join(' · ');
   return `<article class="recipe-card"><div class="recipe-top"><div><h3>${html(recipe.machine || recipe.type)}</h3><span class="recipe-output-label">${amount(recipe.output)} × ${html(names(recipe.output))}${favoriteButton(recipe.output.ref)}</span></div><button data-use-recipe="${recipe.id}" class="primary"${recipe.calculable?'':' disabled'}>Plan recipe</button></div>${renderRecipeDiagram(state.catalog,recipe,state.layouts)}<details class="recipe-details"><summary>Details</summary>${!recipe.calculable?`<p>${(recipe.output.chance??1)<1?'Chance-based output: automatic planning unavailable.':'Automatic planning is not supported for this recipe yet.'}</p>`:''}${details?`<p>${details}</p>`:''}${(recipe.notes||[]).map(n=>`<p>${html(n)}</p>`).join('')}<p>${recipe.inputs.map(s=>`<button type="button" class="link-button recipe-detail-item" data-item="${html(s.ref)}">${amount(s)} × ${html(names(s))}${s.toolDamage?` (${s.toolDamage} durability per craft)`:s.consume===false?' (reusable)':''}</button>`).join('<br>')}</p><p class="id">${html(recipe.source)}</p>${recipe.output.nbt?`<code>${html(recipe.output.nbt)}</code>`:''}</details></article>`;
@@ -285,9 +317,9 @@ function showData() {
   openDialog('Runtime data & coverage',`<p>Source: <b>${html(s.source)}</b><br>${html(s.timestamp)}</p><table>${rows.map(([label,count])=>`<tr><td>${label}</td><td>${fmt(count)}</td></tr>`).join('')}</table><h3>Coverage in progress</h3><p>The catalog uses exact runtime item IDs, metadata, NBT and display names. Machine recipes come from the loaded registries. ${fmt(s.unhandledRecords)} records still need separate handling or are display-only examples; these are not silently treated as working recipes.</p><details><summary>Imported registries</summary><table>${Object.entries(s.byRegistry||{}).map(([k,v])=>`<tr><td>${html(k)}</td><td>${fmt(v)}</td></tr>`).join('')}</table></details><h3>Images</h3><p>Images are matched by the game's texture names and item variants. A question mark means an image is still unavailable. Texture previews can differ from custom-rendered items or 3D block icons.</p><p class="id">Snapshot SHA-256: ${html(s.sha256)}</p>`);
 }
 async function copyList() {
-  const result = state.result;
+  const result = currentMaterialView();
   if (!result) return;
-  const lines = [`${state.quantity} × ${names(state.target)}`, '', ...result.materials.map(s => `${amount({...s.stack,count:s.count})} × ${names(s.stack)} — ${s.reasons.map(r => reasons[r]).join('; ')}`), '', ...result.warnings, 'Source: loaded TechIt-ng registries. Custom recipe coverage is still being checked.'];
+  const lines = [`${state.quantity} × ${names(state.target)}`, '', ...result.materials.map(s => `${amount({...s.stack,count:s.count})} × ${names(s.stack)}${materialDescription(s)?' — '+materialDescription(s):''}`), '', ...result.warnings, 'Source: loaded TechIt-ng registries. Custom recipe coverage is still being checked.'];
   try { await navigator.clipboard.writeText(lines.join('\n')); $('#copy-list').textContent = 'Copied'; $('#live-status').textContent = 'Material list copied.'; }
   catch { openDialog('Copy only this list', `<p>Select and copy the text below.</p><textarea style="width:100%;min-height:250px" aria-label="Material list">${html(lines.join('\n'))}</textarea>`); }
 }
@@ -334,6 +366,7 @@ document.addEventListener('input', event => {
 document.addEventListener('change', event => {
   if (!state.catalog) return;
   const input = event.target;
+  if(input.dataset.oreLevel){setOreLevel(input.checked);return;}
   if(input.id==='process-filter'){state.process=input.value;state.recipeLimit=40;renderView();checkpoint();return;}
   if (input.id === 'quantity') { state.quantity = Math.max(1, Math.min(1000000, Math.trunc(Number(input.value) || 1))); renderHeader(); renderView(); }
   else if (input.id === 'has-recipe') { state.craftable = input.checked; state.modOpen={}; state.modLimits={}; state.itemLimit = 80; renderIndex(); }
