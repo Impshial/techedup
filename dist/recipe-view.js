@@ -20,7 +20,7 @@ export function diagramSlots(recipe,layout) {
   const positions=layout.alloyTank ? recipe.inputs.map((_,i)=>({x:layout.alloyTank.x+i*layout.alloyTank.w/recipe.inputs.length,y:layout.alloyTank.y,w:layout.alloyTank.w/recipe.inputs.length,h:layout.alloyTank.h})) : layout.inputs;
   return [...positions.map((pos,i)=>({pos,stack:inputs[i],role:'input'})),...layout.outputs.map((pos,i)=>({pos,stack:(recipe.outputs||[recipe.output])[i],role:'output'}))].filter(s=>s.stack);
 }
-export function renderRecipeDiagram(catalog,recipe,layouts,node=null) {
+export function renderRecipeDiagram(catalog,recipe,layouts,node=null,favoriteButton=()=>'') {
   function displayStack(s) {
     if(catalog.items.has(s.ref))return s;
     const selected=node?.children.find(c=>c.source?.ref===s.ref)?.stack;
@@ -30,7 +30,7 @@ export function renderRecipeDiagram(catalog,recipe,layouts,node=null) {
     const shown=displayStack(s),item=catalog.item(shown.ref),fluid=item.kind==='fluid';
     const label=`${s.count.toLocaleString()}${fluid?' mB':''} × ${item.name}${s.toolDamage?` (${s.toolDamage} durability per craft)`:s.consume===false?' (reusable)':''}${s.chance!==undefined&&s.chance<1?` (${s.chance*100}% chance)`:''}`;
     const color=item.color==null?'#647f9b':'#'+(item.color&0xffffff).toString(16).padStart(6,'0');
-    return `<button class="diagram-item${fluid?' fluid':''}" data-item="${esc(s.ref)}" title="${esc(label)}" aria-label="${esc(label)}">${item.image?`<img src="${esc(item.image)}" alt="" loading="lazy">`:fluid?`<span class="fluid-fill" style="background:${color}"></span>`:'<span class="unknown">?</span>'}${!fluid&&s.count>1?`<span class="diagram-count">${s.count.toLocaleString()}</span>`:''}${s.consume===false&&!s.toolDamage?'<span class="diagram-reusable" aria-hidden="true">∞</span>':''}</button>`;
+    return `<button class="diagram-item${fluid?' fluid':''}" data-item="${esc(s.ref)}" title="${esc(label)}" aria-label="${esc(label)}">${item.image?`<img src="${esc(item.image)}" alt="" loading="lazy">`:fluid?`<span class="fluid-fill" style="background:${color}"></span>`:'<span class="unknown">?</span>'}${!fluid&&s.count>1?`<span class="diagram-count">${s.count.toLocaleString()}</span>`:''}${s.consume===false&&!s.toolDamage?'<span class="diagram-reusable" aria-hidden="true">∞</span>':''}</button>${favoriteButton(shown.ref,'diagram-favorite')}`;
   }
   const layout=layouts[recipe.source]||layouts[recipe.machine];
   let diagram;

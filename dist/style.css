@@ -6,6 +6,28 @@
 .empty-selection{color:var(--muted);font-size:15px;margin:45px 0;text-align:center}
 .recipe-filter{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:18px 0;font-size:14px}.recipe-filter select{padding:8px 12px;border:1px solid var(--line);background:#fff;border-radius:4px;max-width:100%}
 .diagram-item.fluid img{object-fit:fill}
+.index-tabs{display:flex;gap:18px;border-bottom:1px solid var(--line);margin:-7px 0 20px;flex-shrink:0}
+.index-tabs button{border:0;border-bottom:3px solid transparent;background:none;padding:10px 0;color:var(--muted);font-size:14px;font-weight:600}
+.index-tabs button[aria-selected="true"]{border-bottom-color:var(--blue);color:var(--blue)}
+#index-panel{display:flex;flex-direction:column;min-height:0;flex:1}
+#index-panel>.index-heading,#index-panel>.search,#index-panel>.filters{flex-shrink:0}
+.favorites-status{font-size:13px;color:#9d3e31;line-height:1.5;margin:0 0 12px;flex-shrink:0}
+button.favorite-toggle{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex:none;padding:5px;border:0;border-radius:4px;background:transparent;color:#6d7e92;vertical-align:middle}
+.favorite-toggle svg{width:18px;height:18px;flex:none;pointer-events:none}
+.favorite-toggle path{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+button.favorite-toggle:hover{background:#faedf2;color:#ac315b}
+.favorite-toggle[aria-pressed="true"]{color:#b33460}
+.favorite-toggle[aria-pressed="true"] path{fill:currentColor}
+.selected-title h2{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.selected-title .favorite-toggle{width:36px;height:36px}
+.selected-title .favorite-toggle svg{width:23px;height:23px}
+.favorite-item-row{display:flex;align-items:center;gap:6px;min-width:0}
+.favorite-item-row>.item-button,.favorite-item-row>.inventory-match{flex:1;min-width:0}
+.recipe-output-label,.named-item{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.process-slot{position:relative}
+button.diagram-favorite{position:absolute;right:-5px;top:-5px;z-index:3;width:18px;height:18px;padding:2px;background:#fff;border:1px solid #d5dce5;border-radius:50%}
+.diagram-favorite svg{width:12px;height:12px}
+.build-entry .favorite-toggle{margin-left:-4px}
 .material-list-actions{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 14px;margin-top:8px}
 .material-list-actions .link-button{font-size:14px}
 .build-list-open{display:flex;align-items:center;gap:9px;padding:8px 12px;border:1px solid #6685b2;border-radius:5px;background:#263d5b;color:#fff;font-size:14px;white-space:nowrap}

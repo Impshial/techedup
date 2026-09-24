@@ -1,19 +1,50 @@
 import { Catalog, calculate, key, fromKey } from './planner.js?v=6';
-import { groupItemsByMod, renderRecipeDiagram, sortRecipeMethods } from './recipe-view.js?v=6';
+import { groupItemsByMod, renderRecipeDiagram, sortRecipeMethods } from './recipe-view.js?v=7';
 import { createItemSearch } from './search.js?v=1';
-import { capturePage, createNavigation } from './navigation.js?v=1';
+import { capturePage, createNavigation } from './navigation.js?v=2';
 import { createBuildList } from './build-list.js?v=1';
+import { createFavorites, favoritesStorageKey, renderFavoriteButton } from './favorites.js?v=1';
 
 const $ = selector => document.querySelector(selector);
 const html = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = n => Number(n).toLocaleString();
-const state = { catalog: null, ref: null, quantity: 1, tab: 'plan', query: '', craftable: false, itemLimit: 80, recipeLimit: 40, process: '', recipes: {}, members: {}, inventory: {}, result: null, target: null, layouts: {}, modOpen: {}, modLimits: {}, modGroups: [], expandedNodes: new Set(['0']) };
+const state = { catalog: null, ref: null, quantity: 1, tab: 'plan', indexTab: 'all', query: '', craftable: false, itemLimit: 80, recipeLimit: 40, process: '', recipes: {}, members: {}, inventory: {}, result: null, target: null, layouts: {}, modOpen: {}, modLimits: {}, modGroups: [], expandedNodes: new Set(['0']) };
 const names = stack => state.catalog.item(stack.ref).name;
 const amount = stack => fmt(stack.count) + (stack.ref.startsWith('fluid:') ? ' mB' : '');
 const isGroup = ref => ref.startsWith('ore:') || ref.startsWith('alternatives:') || ref.endsWith(':*');
 let restoringPage = false, restoreFrame = 0, navigationReady = false, scrollTimer = 0;
 const navigation = createNavigation(history, location, restorePage);
 const buildList = createBuildList();
+const favorites = createFavorites(()=>window.localStorage,message=>{
+  $('#favorites-status').textContent=message;
+  $('#favorites-status').hidden=!message;
+});
+function favoriteButton(ref, extraClass = '') {
+  return state.catalog.items.has(ref)?renderFavoriteButton(ref,state.catalog.item(ref).name,favorites.has(ref),extraClass):'';
+}
+function syncFavoriteButtons() {
+  document.querySelectorAll('[data-favorite]').forEach(button=>{
+    const ref=button.dataset.favorite,selected=favorites.has(ref);
+    const label=`${selected?'Remove':'Add'} ${state.catalog.item(ref).name} ${selected?'from':'to'} favorites`;
+    button.setAttribute('aria-pressed',String(selected));
+    button.setAttribute('aria-label',label);button.title=label;
+  });
+}
+function toggleFavorite(ref) {
+  if(!favorites.toggle(ref))return;
+  const list=$('#item-list'),scroll=list.scrollTop;
+  const indexFocus=[...list.querySelectorAll('[data-favorite]')].indexOf(document.activeElement);
+  renderIndex();list.scrollTop=scroll;syncFavoriteButtons();
+  if(indexFocus>=0) {
+    const buttons=list.querySelectorAll('[data-favorite]');
+    (buttons[Math.min(indexFocus,buttons.length-1)] || $('#favorites-tab')).focus();
+  }
+  $('#live-status').textContent=`${state.catalog.item(ref).name} ${favorites.has(ref)?'added to':'removed from'} favorites.`;
+}
+function switchIndexTab(tab) {
+  state.indexTab=tab;state.modOpen={};state.modLimits={};
+  renderIndex();$('#item-list').scrollTop=0;checkpoint();
+}
 const pageSnapshot = () => capturePage(state, {scrollY:window.scrollY,indexScroll:$('#item-list').scrollTop});
 function checkpoint() {
   if(scrollTimer) {clearTimeout(scrollTimer);scrollTimer=0;}
@@ -31,14 +62,14 @@ function pageLabel() {
 function renderNavigation() {
   const back=navigation.backLabel;
   $('#page-navigation').hidden=back===null;
-  $('#page-navigation').innerHTML=back===null?'':`<button class="navigation-back" data-back>← Back to ${html(back)}</button>${state.ref&&back!=='item index'?'<button class="link-button" data-home>Item index</button>':''}`;
+  $('#page-navigation').innerHTML=back===null?'':`<button class="navigation-back" data-back>← Back to ${html(back)}</button>`;
 }
 function restorePage(page) {
   if(restoreFrame) cancelAnimationFrame(restoreFrame);
   if(scrollTimer) {clearTimeout(scrollTimer);scrollTimer=0;}
   restoringPage=true;
   const {expandedNodes,scrollY,indexScroll,...view}=page;
-  Object.assign(state,view,{expandedNodes:new Set(expandedNodes)});
+  Object.assign(state,view,{indexTab:page.indexTab||'all',expandedNodes:new Set(expandedNodes)});
   if($('#data-dialog').open) $('#data-dialog').close();
   $('#search').value=state.query;
   $('#has-recipe').checked=state.craftable;
@@ -77,17 +108,25 @@ function modItems(group) {
   const limit=state.modLimits[group.name] || 60;
   return group.items.slice(0,limit).map(item => {
     const count=state.catalog.forItem(item.ref).length;
-    return `<button class="item-button${item.ref===state.ref?' selected':''}" data-item="${html(item.ref)}" aria-pressed="${item.ref===state.ref}">${icon(item.ref)}<span class="item-name">${html(item.name)}</span>${count?`<span class="tiny-count">${count}</span>`:''}</button>`;
+    const button=`<button class="item-button${item.ref===state.ref?' selected':''}" data-item="${html(item.ref)}" aria-pressed="${item.ref===state.ref}">${icon(item.ref)}<span class="item-name">${html(item.name)}</span>${count?`<span class="tiny-count">${count}</span>`:''}</button>`;
+    return state.indexTab==='favorites'?`<div class="favorite-item-row">${button}${favoriteButton(item.ref)}</div>`:button;
   }).join('')+(group.items.length>limit?`<button class="link-button mod-more" data-more-mod="${html(group.name)}">Show more · ${fmt(group.items.length-limit)}</button>`:'');
 }
 function renderIndex() {
-  const items=matches(state.query).filter(item=>!state.craftable || state.catalog.forItem(item.ref).length);
+  const saved=state.indexTab==='favorites';
+  const items=matches(state.query).filter(item=>(!saved||favorites.has(item.ref))&&(!state.craftable || state.catalog.forItem(item.ref).length));
   state.modGroups=groupItemsByMod(items);
-  $('#result-count').textContent=fmt(items.length);$('#item-count').textContent=fmt(state.catalog.data.items.length);
+  $('#result-count').textContent=fmt(items.length);
+  $('#index-title').textContent=saved?'Favorites':'Item index';
+  document.querySelectorAll('[data-index-tab]').forEach(button=>{
+    const selected=button.dataset.indexTab===state.indexTab;
+    button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;
+  });
+  $('#index-panel').setAttribute('aria-labelledby',saved?'favorites-tab':'all-items-tab');
   $('#item-list').innerHTML=state.modGroups.length?state.modGroups.map(group=>{
-    const open=state.modOpen[group.name] ?? (!!state.query || group.items.some(i=>i.ref===state.ref));
+    const open=state.modOpen[group.name] ?? (saved || !!state.query || group.items.some(i=>i.ref===state.ref));
     return `<details class="mod-group" data-mod="${html(group.name)}"${open?' open':''}><summary><span>${html(group.name)}</span><small>${fmt(group.items.length)}</small></summary><div class="mod-items">${open?modItems(group):''}</div></details>`;
-  }).join(''):'<p class="empty">No matching items.</p>';
+  }).join(''):`<p class="empty">${saved?(favorites.refs.length?'No matching favorites.':'Tap a heart to save a favorite.'):'No matching items.'}</p>`;
   $('#more-items').hidden=true;
 }
 function setTarget(ref, recipeId) {
@@ -108,7 +147,7 @@ function select(ref, recipeId) {
 function renderHeader() {
   $('.tabs').hidden=false;
   const item=state.catalog.item(state.ref),count=state.catalog.forItem(state.ref).length;
-  $('#selected').innerHTML=`<div class="selected-heading">${icon(state.ref,true)}<div class="selected-title"><h2>${html(item.name)}</h2><div class="item-meta"><span>${html(item.mod || '')}</span><span>${count} recipe${count===1?'':'s'}</span></div></div></div>`;
+  $('#selected').innerHTML=`<div class="selected-heading">${icon(state.ref,true)}<div class="selected-title"><h2>${html(item.name)}${favoriteButton(state.ref)}</h2><div class="item-meta"><span>${html(item.mod || '')}</span><span>${count} recipe${count===1?'':'s'}</span></div></div></div>`;
   $('#recipes-count').textContent=fmt(count);$('#uses-count').textContent=fmt(state.catalog.uses(state.ref).length);
 }
 function quantityControl() {
@@ -123,16 +162,16 @@ function renderNode(node, level = 0, path = '0') {
   const identity = key(node.stack), methods = sortRecipeMethods(state.catalog.forStack(node.stack));
   const options = node.source ? state.catalog.options(node.source) : [];
   const description = (node.recipe ? `${node.recipe.machine || node.recipe.type} · ${fmt(node.runs)} batch${node.runs === 1 ? '' : 'es'} × ${amount(node.recipe.output)} output${node.extra ? ` · ${fmt(node.extra)} extra` : ''}` : reasons[node.status]) + (node.reusable ? ' · reusable tool/cast' : '');
-  const line = `<div class="node-row">${icon(node.stack.ref)}<span class="node-name">${html(names(node.stack))}</span><span class="count">${amount({...node.stack,count:node.wanted})}</span></div>`;
+  const line = `<div class="node-row">${icon(node.stack.ref)}<span class="node-name">${html(names(node.stack))}</span>${favoriteButton(node.stack.ref)}<span class="count">${amount({...node.stack,count:node.wanted})}</span></div>`;
   const controls = `<div class="node-controls">${methods.length ? `<select data-method="${html(identity)}" aria-label="Recipe for ${html(names(node.stack))}"><option value="">Automatic</option><option value="supply"${state.recipes[identity] === 'supply' ? ' selected' : ''}>Obtain separately</option>${methods.map(r => `<option value="${r.id}"${state.recipes[identity] === r.id ? ' selected' : ''}${!r.calculable ? ' disabled' : ''}>${html(recipeLabel(r))}${!r.calculable ? ' · needs review' : ''}</option>`).join('')}</select>` : ''}${options.length > 1 ? `<select data-member="${html(key(node.source))}" aria-label="Choose an equivalent ingredient">${options.map(s => `<option value="${html(key(s))}"${key(s) === identity ? ' selected' : ''}>${html(names(s))}</option>`).join('')}</select>` : ''}<button class="link-button" data-add-owned="${html(identity)}">I have some</button></div>`;
-  const content = `<div class="node-detail">${html(description)}${node.have ? ` · ${fmt(node.have)} owned` : ''}${node.reused ? ` · ${fmt(node.reused)} from leftovers` : ''}</div>${controls}${node.recipe?renderRecipeDiagram(state.catalog,node.recipe,state.layouts,node):''}${node.children.length ? `<div class="tree">${node.children.map((s,i) => renderNode(s, level + 1,path+'.'+i)).join('')}</div>` : ''}`;
+  const content = `<div class="node-detail">${html(description)}${node.have ? ` · ${fmt(node.have)} owned` : ''}${node.reused ? ` · ${fmt(node.reused)} from leftovers` : ''}</div>${controls}${node.recipe?renderRecipeDiagram(state.catalog,node.recipe,state.layouts,node,favoriteButton):''}${node.children.length ? `<div class="tree">${node.children.map((s,i) => renderNode(s, level + 1,path+'.'+i)).join('')}</div>` : ''}`;
   return `<div class="node">${node.children.length ? `<details data-node="${path}"${state.expandedNodes.has(path) ? ' open' : ''}><summary>${line}</summary>${content}</details>` : line + content}</div>`;
 }
 function renderInventory() {
-  return `<section class="card inventory"><details${Object.keys(state.inventory).length?' open':''}><summary>Materials you already have</summary><label for="inventory-search">Add an owned item</label><input id="inventory-search" type="search" placeholder="Search your materials…" autocomplete="off"><div id="inventory-matches"></div>${Object.entries(state.inventory).map(([id, count]) => `<div class="owned-row"><span>${html(names(fromKey(id)))}</span><input type="number" min="0" max="1000000000" value="${count}" step="1" data-owned="${html(id)}" aria-label="Owned ${html(names(fromKey(id)))}"><button data-remove-owned="${html(id)}" aria-label="Remove owned ${html(names(fromKey(id)))}">×</button></div>`).join('')}${Object.keys(state.inventory).length ? '<button id="clear-inventory" class="link-button">Clear inventory · plan from scratch</button>' : ''}</details></section>`;
+  return `<section class="card inventory"><details${Object.keys(state.inventory).length?' open':''}><summary>Materials you already have</summary><label for="inventory-search">Add an owned item</label><input id="inventory-search" type="search" placeholder="Search your materials…" autocomplete="off"><div id="inventory-matches"></div>${Object.entries(state.inventory).map(([id, count]) => `<div class="owned-row"><span>${html(names(fromKey(id)))}</span>${favoriteButton(fromKey(id).ref)}<input type="number" min="0" max="1000000000" value="${count}" step="1" data-owned="${html(id)}" aria-label="Owned ${html(names(fromKey(id)))}"><button data-remove-owned="${html(id)}" aria-label="Remove owned ${html(names(fromKey(id)))}">×</button></div>`).join('')}${Object.keys(state.inventory).length ? '<button id="clear-inventory" class="link-button">Clear inventory · plan from scratch</button>' : ''}</details></section>`;
 }
 function materialRows(materials) {
-  return materials.map(s=>`<div class="material-row">${icon(s.stack.ref)}<span class="name">${html(names(s.stack))}<span class="supply-type">${html(s.reasons.map(r=>reasons[r]).join('; '))}</span></span><span class="count">${amount({...s.stack,count:s.count})}</span></div>`).join('');
+  return materials.map(s=>`<div class="material-row">${icon(s.stack.ref)}<span class="name">${html(names(s.stack))}<span class="supply-type">${html(s.reasons.map(r=>reasons[r]).join('; '))}</span></span>${favoriteButton(s.stack.ref)}<span class="count">${amount({...s.stack,count:s.count})}</span></div>`).join('');
 }
 function updateBuildControls() {
   $('#build-list-open').hidden=!buildList.size;
@@ -150,7 +189,7 @@ function addToBuildList() {
 function showBuildList() {
   const entries=buildList.entries,total=buildList.total();
   const materials=total.materials.sort((a,b)=>names(a.stack).localeCompare(names(b.stack)));
-  const content=entries.length?`<div class="build-scroll"><div class="build-plans-heading"><span>${entries.length} plan${entries.length===1?'':'s'}</span><button id="clear-build" class="link-button">Clear list</button></div><div class="build-plans">${entries.map(entry=>`<div class="build-entry">${icon(entry.target.ref)}<span class="name">${html(names(entry.target))}</span><span class="count">${amount({...entry.target,count:entry.quantity})}</span><button class="remove-build" data-remove-build="${entry.id}" aria-label="Remove ${html(names(entry.target))} from build list">×</button></div>`).join('')}</div><div class="build-total-heading"><h3>Total materials</h3><small>${materials.length} types</small></div>${materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>'}${total.warnings.length?`<details class="plan-info"><summary>Plan notes</summary>${total.warnings.map(w=>`<p>${html(w)}</p>`).join('')}</details>`:''}</div><div class="build-dialog-actions"><button id="copy-build" class="primary wide">Copy total</button><div id="build-copy-fallback" hidden></div></div>`:'<p class="help build-empty">Your build list is empty.</p>';
+  const content=entries.length?`<div class="build-scroll"><div class="build-plans-heading"><span>${entries.length} plan${entries.length===1?'':'s'}</span><button id="clear-build" class="link-button">Clear list</button></div><div class="build-plans">${entries.map(entry=>`<div class="build-entry">${icon(entry.target.ref)}<span class="name">${html(names(entry.target))}</span>${favoriteButton(entry.target.ref)}<span class="count">${amount({...entry.target,count:entry.quantity})}</span><button class="remove-build" data-remove-build="${entry.id}" aria-label="Remove ${html(names(entry.target))} from build list">×</button></div>`).join('')}</div><div class="build-total-heading"><h3>Total materials</h3><small>${materials.length} types</small></div>${materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>'}${total.warnings.length?`<details class="plan-info"><summary>Plan notes</summary>${total.warnings.map(w=>`<p>${html(w)}</p>`).join('')}</details>`:''}</div><div class="build-dialog-actions"><button id="copy-build" class="primary wide">Copy total</button><div id="build-copy-fallback" hidden></div></div>`:'<p class="help build-empty">Your build list is empty.</p>';
   openDialog('Build list',content,'build-dialog');
 }
 function removeFromBuildList(id) {
@@ -185,11 +224,11 @@ function renderPlan() {
   catch(error){$('#view').innerHTML=`<div class="notice">${html(error.message)}</div>`;return;}
   const result=state.result,materials=result.materials.slice().sort((a,b)=>names(a.stack).localeCompare(names(b.stack)));
   const machines=[...new Set(result.steps.map(s=>state.catalog.recipes.get(s.recipe).machine).filter(m=>m!=='Crafting'))];
-  $('#view').innerHTML=`<div class="plan-layout"><section class="card"><div class="card-head"><h3>Crafting & processing tree</h3>${quantityControl()}</div><div class="card-body">${renderNode(result.tree)}</div></section><div class="supplies"><section class="card"><div class="card-head"><h3>Total materials</h3><small>${materials.length} types</small></div><div class="card-body">${materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>'}<button id="add-build" class="primary wide" title="Add the material quantities currently shown">Add to build list</button><div class="material-list-actions"><button id="copy-list" class="link-button">Copy material list</button><button class="link-button" data-view-build>View total · <span data-build-count>${buildList.size}</span></button></div></div>${result.leftovers.length?`<details class="leftovers"><summary>Leftovers & by-products</summary>${result.leftovers.map(s=>`${amount({...s.stack,count:s.count})} × ${html(names(s.stack))}`).join('<br>')}</details>`:''}</section>${renderInventory()}</div></div><details class="plan-info"><summary>Plan details</summary>${result.warnings.map(w=>`<p>${html(w)}</p>`).join('')}<p>Unimported recipes are marked in the materials list. Fuel, power, and machine construction are separate requirements. Chance-based outputs are excluded from guaranteed materials.</p>${machines.length?`<p>${machines.map(html).join(' · ')}</p>`:''}</details>`;
+  $('#view').innerHTML=`<div class="plan-layout"><section class="card"><div class="card-head"><h3>Crafting & processing tree</h3>${quantityControl()}</div><div class="card-body">${renderNode(result.tree)}</div></section><div class="supplies"><section class="card"><div class="card-head"><h3>Total materials</h3><small>${materials.length} types</small></div><div class="card-body">${materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>'}<button id="add-build" class="primary wide" title="Add the material quantities currently shown">Add to build list</button><div class="material-list-actions"><button id="copy-list" class="link-button">Copy material list</button><button class="link-button" data-view-build>View total · <span data-build-count>${buildList.size}</span></button></div></div>${result.leftovers.length?`<details class="leftovers"><summary>Leftovers & by-products</summary>${result.leftovers.map(s=>`<div class="named-item">${amount({...s.stack,count:s.count})} × ${html(names(s.stack))}${favoriteButton(s.stack.ref)}</div>`).join('')}</details>`:''}</section>${renderInventory()}</div></div><details class="plan-info"><summary>Plan details</summary>${result.warnings.map(w=>`<p>${html(w)}</p>`).join('')}<p>Unimported recipes are marked in the materials list. Fuel, power, and machine construction are separate requirements. Chance-based outputs are excluded from guaranteed materials.</p>${machines.length?`<p>${machines.map(html).join(' · ')}</p>`:''}</details>`;
 }
 function recipeCard(recipe) {
   const details=Object.entries(recipe.details||{}).map(([k,v])=>`${html(k)}: ${html(v)}`).join(' · ');
-  return `<article class="recipe-card"><div class="recipe-top"><div><h3>${html(recipe.machine || recipe.type)}</h3><span>${amount(recipe.output)} × ${html(names(recipe.output))}</span></div><button data-use-recipe="${recipe.id}" class="primary"${recipe.calculable?'':' disabled'}>Plan recipe</button></div>${renderRecipeDiagram(state.catalog,recipe,state.layouts)}<details class="recipe-details"><summary>Details</summary>${!recipe.calculable?'<p>Probabilistic output or custom behavior: automatic planning unavailable.</p>':''}${details?`<p>${details}</p>`:''}${(recipe.notes||[]).map(n=>`<p>${html(n)}</p>`).join('')}<p>${recipe.inputs.map(s=>`${amount(s)} × ${html(names(s))}${s.toolDamage?` (${s.toolDamage} durability per craft)`:s.consume===false?' (reusable)':''}`).join('<br>')}</p><p class="id">${html(recipe.source)}</p>${recipe.output.nbt?`<code>${html(recipe.output.nbt)}</code>`:''}</details></article>`;
+  return `<article class="recipe-card"><div class="recipe-top"><div><h3>${html(recipe.machine || recipe.type)}</h3><span class="recipe-output-label">${amount(recipe.output)} × ${html(names(recipe.output))}${favoriteButton(recipe.output.ref)}</span></div><button data-use-recipe="${recipe.id}" class="primary"${recipe.calculable?'':' disabled'}>Plan recipe</button></div>${renderRecipeDiagram(state.catalog,recipe,state.layouts,null,favoriteButton)}<details class="recipe-details"><summary>Details</summary>${!recipe.calculable?'<p>Probabilistic output or custom behavior: automatic planning unavailable.</p>':''}${details?`<p>${details}</p>`:''}${(recipe.notes||[]).map(n=>`<p>${html(n)}</p>`).join('')}<p>${recipe.inputs.map(s=>`<span class="named-item">${amount(s)} × ${html(names(s))}${s.toolDamage?` (${s.toolDamage} durability per craft)`:s.consume===false?' (reusable)':''}${favoriteButton(s.ref)}</span>`).join('<br>')}</p><p class="id">${html(recipe.source)}</p>${recipe.output.nbt?`<code>${html(recipe.output.nbt)}</code>`:''}</details></article>`;
 }
 function renderView() {
   document.querySelectorAll('[data-tab]').forEach(button => { button.classList.toggle('active', button.dataset.tab === state.tab); button.setAttribute('aria-current', button.dataset.tab === state.tab ? 'page' : 'false'); });
@@ -207,7 +246,7 @@ function openDialog(title, content, className = '') {
 }
 function showAlternatives(stack) {
   const options = state.catalog.options(stack).filter(option=>state.catalog.forStack(option).length);
-  openDialog(state.catalog.item(stack.ref).name, options.length ? options.map(s => `<button class="item-button" data-item="${html(s.ref)}">${icon(s.ref)}<span class="item-name">${html(names(s))}<small>${html(s.ref)}</small></span></button>`).join('') : '<p>No matching items with recipes.</p>');
+  openDialog(state.catalog.item(stack.ref).name, options.length ? options.map(s => `<div class="favorite-item-row"><button class="item-button" data-item="${html(s.ref)}">${icon(s.ref)}<span class="item-name">${html(names(s))}<small>${html(s.ref)}</small></span></button>${favoriteButton(s.ref)}</div>`).join('') : '<p>No matching items with recipes.</p>');
 }
 function showData() {
   const d=state.catalog.data,s=d.summary;
@@ -226,7 +265,9 @@ document.addEventListener('click', event => {
   const button = event.target.closest('button');
   if (!button || !state.catalog) return;
   const d = button.dataset;
-  if ('viewBuild' in d) {showBuildList();return;}
+  if (d.favorite) {event.preventDefault();event.stopPropagation();toggleFavorite(d.favorite);return;}
+  else if (d.indexTab) {switchIndexTab(d.indexTab);return;}
+  else if ('viewBuild' in d) {showBuildList();return;}
   else if (button.id === 'add-build') {addToBuildList();return;}
   else if (d.removeBuild) {removeFromBuildList(Number(d.removeBuild));return;}
   else if (button.id === 'clear-build') {buildList.clear();updateBuildControls();showBuildList();$('#close-dialog').focus();$('#live-status').textContent='Build list cleared.';return;}
@@ -253,7 +294,7 @@ document.addEventListener('input', event => {
   if (event.target.id === 'search') { state.query = event.target.value; state.modOpen={}; state.modLimits={}; state.itemLimit = 80; renderIndex(); }
   if (event.target.id === 'inventory-search') {
     const value = event.target.value.trim();
-    $('#inventory-matches').innerHTML = value ? matches(value).slice(0, 8).map(item => `<button class="inventory-match" data-add-owned="${html(item.ref)}">${html(item.name)}</button>`).join('') : '';
+    $('#inventory-matches').innerHTML = value ? matches(value).slice(0, 8).map(item => `<div class="favorite-item-row"><button class="inventory-match" data-add-owned="${html(item.ref)}">${html(item.name)}</button>${favoriteButton(item.ref)}</div>`).join('') : '';
   }
   checkpoint();
 });
@@ -269,6 +310,12 @@ document.addEventListener('change', event => {
   checkpoint();
 });
 document.addEventListener('keydown', event => { if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) { event.preventDefault(); $('#search').focus(); } });
+document.addEventListener('keydown',event=>{
+  if(!state.catalog || !event.target.matches('[data-index-tab]') || !['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  event.preventDefault();
+  const tab=event.key==='Home'?'all':event.key==='End'?'favorites':state.indexTab==='all'?'favorites':'all';
+  switchIndexTab(tab);$(`[data-index-tab="${tab}"]`).focus();
+});
 
 async function start() {
   try {
@@ -297,6 +344,10 @@ document.addEventListener('toggle',event=>{
   checkpoint();
 },true);
 window.addEventListener('popstate',event=>{if(navigationReady)navigation.restore(event.state);});
+window.addEventListener('storage',event=>{
+  if(event.key!==favoritesStorageKey && event.key!==null)return;
+  if(favorites.refresh() && state.catalog) {renderIndex();syncFavoriteButtons();}
+});
 window.addEventListener('scroll',saveScroll,{passive:true});
 $('#item-list').addEventListener('scroll',saveScroll,{passive:true});
 start();
