@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../dist/', import.meta.url));
-const files = ['index.html', 'style.css', 'app.js', 'planner.js', 'search.js', 'recipe-view.js', 'navigation.js', 'build-list.js', 'material-export.js', 'minecraft-export.js', 'favorites.js', 'catalog.json', 'recipe-layouts.json', 'downloads/techit-build-list-0.2.0.jar'];
+const files = ['index.html', 'style.css', 'app.js', 'planner.js', 'search.js', 'recipe-view.js', 'navigation.js', 'build-list.js', 'material-export.js', 'minecraft-export.js', 'favorites.js', 'catalog.json', 'recipe-layouts.json', 'downloads/techit-build-list-0.2.1.jar'];
 const localFile = relative => {
   assert.equal(typeof relative, 'string', 'Asset path must be a string');
   const resolved = path.resolve(root, relative);

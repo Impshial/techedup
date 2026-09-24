@@ -21,7 +21,7 @@ public final class BuildListTabs extends AbstractTab {
         GL11.glColor4f(1,1,1,1);
         mc.func_110434_K().func_110577_a(TEXTURE);
         func_73729_b(field_73746_c,field_73743_d,field_73741_f==2?0:28,field_73742_g?0:32,28,field_73742_g?28:32);
-        BuildListIcons.checkmark(field_73746_c+2,field_73743_d+10,2);
+        BuildListIcons.checkmark(field_73746_c+8,field_73743_d+12,1);
         if(mouseX>=field_73746_c&&mouseX<field_73746_c+28&&mouseY>=field_73743_d&&mouseY<field_73743_d+28) {
             func_73734_a(mouseX+8,mouseY-12,mouseX+70,mouseY,0xEE172333);
             func_73731_b(mc.field_71466_p,"Build List",mouseX+11,mouseY-10,0xFFFFFF);

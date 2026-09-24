@@ -57,7 +57,8 @@ public final class BuildListTest {
             ChecklistLayout layout=new ChecklistLayout(size[0],size[1]);
             check(layout.left>=0&&layout.top>=0&&layout.left+layout.width==size[0]-6,"popup stays docked within the right edge");
             check(layout.top+layout.height==size[1]-6,"popup expands upward from the bottom right");
-            check(layout.badgeLeft+layout.badgeWidth==size[0]-6&&layout.badgeTop+22==size[1]-6,"minimized control keeps its screen margin");
+            check(layout.badgeLeft+layout.badgeWidth==size[0]-6&&layout.badgeTop+20==size[1]-6,"minimized control keeps its screen margin");
+            check(layout.width==204,"popup is fifteen percent narrower than the original 240 pixels");
             check(layout.rowsBottom<=layout.top+layout.height-37,"rows do not overlap footer controls");
             int offset=layout.clampOffset(1000,35);
             check(offset+layout.visibleRows==35,"scroll reaches the last material");
@@ -65,6 +66,7 @@ public final class BuildListTest {
             check(layout.rowAt(layout.left+8,layout.rowsBottom,offset,35)==-1,"footer cannot toggle a material");
             check(layout.clampOffset(9,0)==0&&layout.clampOffset(-9,35)==0,"empty and negative scrolls are bounded");
         }
+        PopupTest.run(resumed,file,renamed);
         String text=new String(original,"UTF-8");
         expectRejected(store,file,text.replace("\"version\": 1","\"version\": 99"),"unknown version");
         expectRejected(store,file,text.replace("\"minecraftVersion\": \"1.6.4\"","\"minecraftVersion\": \"1.7.10\""),"different game version");
