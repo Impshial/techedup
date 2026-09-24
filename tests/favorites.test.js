@@ -38,15 +38,14 @@ test('blocked storage and malformed saved data report an error without claiming 
   assert.deepEqual(corrupt.refs,[]);assert.match(messages.at(-1),/could not be loaded/);
 });
 
-test('recipe slots expose separate favorite buttons for the displayed member of an ingredient group',()=>{
+test('recipe grids keep item navigation without repeating favorite buttons',()=>{
   const items=new Map([['copper',{name:'Copper Ingot',kind:'item'}],['machine',{name:'Machine',kind:'item'}]]);
   const catalog={items,item:ref=>items.get(ref)||{name:ref},options:()=>[{ref:'copper',count:1}]};
   const recipe={inputs:[{ref:'ore:ingotCopper',count:2}],output:{ref:'machine',count:1},machine:'Crafting'};
-  const markup=renderRecipeDiagram(catalog,recipe,{},null,(ref,style)=>renderFavoriteButton(ref,catalog.item(ref).name,ref==='copper',style));
+  const markup=renderRecipeDiagram(catalog,recipe,{});
   assert.match(markup,/data-item="ore:ingotCopper"/);
-  assert.match(markup,/data-favorite="copper" aria-pressed="true"/);
-  assert.match(markup,/data-favorite="machine" aria-pressed="false"/);
-  assert.match(markup,/<\/button><button type="button" class="favorite-toggle/);
+  assert.match(markup,/data-item="machine"/);
+  assert.doesNotMatch(markup,/data-favorite|favorite-toggle/);
   assert.match(renderFavoriteButton('item:"','A < B',false),/data-favorite="item:&quot;"/);
   assert.match(renderFavoriteButton('item','A < B',false),/Add A &lt; B to favorites/);
 });
