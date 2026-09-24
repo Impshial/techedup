@@ -102,7 +102,7 @@ function showIndex() {
 }
 function icon(ref, large = false) {
   const item = state.catalog.item(ref);
-  return `<span class="icon${large ? ' large' : ''}" title="${html(item.image ? item.imageType : 'Image mapping needed')}" aria-hidden="true">${item.image ? `<img src="${html(item.image)}" alt="" loading="lazy">` : '<span class="unknown">?</span>'}</span>`;
+  return `<span class="icon${large ? ' large' : ''}" aria-hidden="true">${item.image ? `<img src="${html(item.image)}" alt="" loading="lazy">` : '<span class="unknown">?</span>'}</span>`;
 }
 function matches(query) {
   return state.findItems(query);
