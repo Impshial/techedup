@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#182638"><title>TechIt · Recipe calculator</title>
+  <meta name="description" content="Find Minecraft 1.6.4 recipes and item uses, then calculate the ingredients for your next build.">
+  <link rel="stylesheet" href="./style.css?v=5"><script type="module" src="./app.js?v=7"></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="./"><span class="brand-mark" aria-hidden="true">T</span><span>TECHIT <small>RECIPE CALCULATOR</small></span></a><div class="top-meta"><span id="loaded-count">Loading recipes…</span></div></header>
+  <main>
+    <aside class="index"><div class="index-heading"><h1>Item index</h1><span id="item-count"></span></div><label class="search"><span class="sr-only">Search names, item IDs or ore groups</span><input id="search" type="search" placeholder="Search items or IDs…" autocomplete="off"></label><div class="filters"><label><input id="has-recipe" type="checkbox"> Has a recipe</label><span id="result-count"></span></div><div id="item-list" class="item-list"><p class="empty">Loading catalog…</p></div><button id="more-items" class="link-button" hidden>Show more items</button><div class="index-foot"><span>TECHIT-NG</span><button id="about" class="link-button">Data & images</button></div></aside>
+    <section class="workspace"><div id="selected"></div><nav hidden class="tabs" aria-label="Item views"><button data-tab="plan" class="active">Crafting plan</button><button data-tab="recipes">Recipes <span id="recipes-count">0</span></button><button data-tab="uses">Used in <span id="uses-count">0</span></button></nav><div id="view"></div></section>
+  </main>
+  <dialog id="data-dialog"><div class="dialog-title"><h2>Catalog & image mapping</h2><button id="close-dialog" aria-label="Close">×</button></div><div id="data-content"></div></dialog>
+  <div id="live-status" role="status" class="sr-only"></div>
+</body>
+</html>
