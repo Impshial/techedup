@@ -18,6 +18,7 @@ public final class BuildListScreen extends GuiScreen {
     private GuiTextField search;
     private GuiButton hideButton,modeButton;
     private int left,top,panelWidth,panelHeight,rowsTop,rowsBottom,offset;
+    private int refreshTicks;
     private boolean hideCompleted,showPlans;
     private String query="",message="";
     private final BuildListIcons icons=new BuildListIcons();
@@ -48,7 +49,30 @@ public final class BuildListScreen extends GuiScreen {
         BuildListClient.addTabs(field_73887_h,left,top);
     }
     @Override public boolean func_73868_f(){return false;}
-    @Override public void func_73876_c(){search.func_73780_a();}
+    @Override public void func_73876_c(){
+        if(search!=null)search.func_73780_a();
+        if(++refreshTicks>=20){refreshTicks=0;refreshLists();}
+    }
+    void refreshLists() {
+        List<File> next=session.refreshFiles();
+        boolean changed=build!=null&&build!=session.build;
+        if(changed||!files.equals(next))completion.clear();
+        files=next;
+        if(changed) {
+            build=session.build;selected=session.selected;message=session.message;
+            offset=0;query="";icons.clear();
+            if(search!=null)search.func_73782_a("");
+            updateButtons();
+        }
+    }
+    private void updateButtons() {
+        if(hideButton!=null)hideButton.field_73742_g=build!=null&&!showPlans;
+        if(modeButton!=null)modeButton.field_73742_g=build!=null;
+        for(Object value:field_73887_h) {
+            GuiButton button=(GuiButton)value;
+            if(button.field_73741_f==104)button.field_73744_e=build==null?"Refresh":"Lists";
+        }
+    }
     @Override public void func_73874_b(){Keyboard.enableRepeatEvents(false);}
     private String text(String value,int width){return field_73886_k.func_78269_a(value,Math.max(8,width));}
     private int visibleCount(){return Math.max(1,(rowsBottom-rowsTop)/27);}
@@ -104,7 +128,7 @@ public final class BuildListScreen extends GuiScreen {
             else {List<BuildListStore.Row> all=showPlans?build.plans:build.materials;int done=0;for(BuildListStore.Row row:all)if(build.checked.contains(row.key))done++;
                 status=showPlans?all.size()+" item"+(all.size()==1?"":"s")+" to build":"Materials - "+done+" / "+all.size()+" completed";}
         }
-        func_73731_b(field_73886_k,text(status,panelWidth-20),left+10,top+panelHeight-42,message.isEmpty()?0x34465B:0x8B2020);
+        func_73731_b(field_73886_k,text(status,panelWidth-20),left+10,top+panelHeight-42,message.isEmpty()||BuildListSession.LIST_REMOVED.equals(message)?0x34465B:0x8B2020);
         super.func_73863_a(mouseX,mouseY,partial);
     }
     private void drawRow(BuildListStore.Row row,int y) {
@@ -141,22 +165,32 @@ public final class BuildListScreen extends GuiScreen {
                         session.toggleCompleted(file);completion.clear();message="";
                     } else open(file);
                 }
-            } else if(!showPlans) {List<BuildListStore.Row> rows=visibleRows();if(index<rows.size()){store.toggle(build,rows.get(index));message="";}}
-        }catch(Exception e){message=e.getMessage();}
+            } else if(!showPlans) {
+                List<BuildListStore.Row> rows=visibleRows();
+                if(index<rows.size()){if(session.toggleRow(rows.get(index)))message="";else refreshLists();}
+            }
+        }catch(Exception e){refreshLists();message=BuildListSession.LIST_REMOVED.equals(e.getMessage())?BuildListSession.LIST_REMOVED:"Could not save progress.";BuildListMod.logger.warning(e.toString());}
     }
-    private void open(File file)throws IOException {session.open(file);build=session.build;selected=session.selected;message=build.warning;offset=0;query="";icons.clear();func_73866_w_();}
+    private void open(File file) {
+        try {
+            session.open(file);build=session.build;selected=session.selected;
+            message=session.message;offset=0;query="";icons.clear();
+            if(search!=null)search.func_73782_a("");
+        } catch(IOException e){refreshLists();message=session.message;}
+        updateButtons();
+    }
     @Override protected void func_73875_a(GuiButton button) {
         try {
             switch(button.field_73741_f) {
             case 102:hideCompleted=!hideCompleted;offset=0;hideButton.field_73744_e=hideCompleted?"Show completed":"Hide completed";break;
             case 103:showPlans=!showPlans;offset=0;icons.clear();modeButton.field_73744_e=showPlans?"Materials":"To build";hideButton.field_73742_g=!showPlans;break;
-            case 104:build=null;selected=null;files=store==null?new ArrayList<File>():store.files();completion.clear();query="";offset=0;message="";func_73866_w_();break;
+            case 104:build=null;selected=null;files=session.refreshFiles();completion.clear();query="";offset=0;message="";func_73866_w_();break;
             case 105:if(store!=null&&Desktop.isDesktopSupported())Desktop.getDesktop().open(store.directory);else message="Folder: minecraft/techit-builds";break;
-            case 106:if(store!=null){if(selected!=null)open(selected);else {files=store.files();completion.clear();message="";}}break;
+            case 106:if(store!=null){if(selected!=null)open(selected);else {refreshLists();completion.clear();message="";}}break;
             case 107:BuildListClient.inventory();break;
             default:break;
             }
-        }catch(Exception e){message=e.getMessage()==null?"Could not complete that action.":e.getMessage();}
+        }catch(Exception e){refreshLists();message="Could not complete action.";BuildListMod.logger.warning(e.toString());}
     }
     @Override protected void func_73869_a(char character,int code) {
         if(code==Keyboard.KEY_ESCAPE){field_73882_e.func_71373_a(null);return;}

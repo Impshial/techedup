@@ -19,12 +19,22 @@ public final class BuildListPopup extends GuiScreen {
     private List<File> files=Collections.emptyList();
     private int offset;
     private int listOffset;
+    private int refreshTicks;
+    private BuildListStore.Build displayedBuild;
     private boolean minimized,rebuildControls,showPlans,dropdownOpen;
     private String message="";
     private static final NumberFormat NUM=NumberFormat.getIntegerInstance(Locale.US);
 
-    BuildListPopup(BuildListSession session){this.session=session;session.chooseOnlyList();message=session.store==null?BuildListMod.error:session.message;}
+    BuildListPopup(BuildListSession session){this.session=session;session.chooseOnlyList();displayedBuild=session.build;message=session.store==null?BuildListMod.error:session.message;}
     @Override public boolean func_73868_f(){return false;}
+    @Override public void func_73876_c(){if(++refreshTicks>=20){refreshTicks=0;refreshLists();}}
+    void refreshLists() {
+        files=session.refreshFiles();
+        if(displayedBuild!=session.build) {
+            displayedBuild=session.build;icons.clear();offset=0;message=session.message;
+        }
+        if(layout!=null)clampListOffset();
+    }
     @Override public void func_73866_w_() {
         layout=new ChecklistLayout(field_73880_f,field_73881_g);field_73887_h.clear();
         if(minimized) {
@@ -49,10 +59,11 @@ public final class BuildListPopup extends GuiScreen {
     }
     void toggleRow(int index)throws IOException {
         if(minimized||dropdownOpen||showPlans||session.build==null||index<0||index>=session.build.materials.size())return;
-        session.store.toggle(session.build,session.build.materials.get(index));message="";
+        if(session.toggleRow(session.build.materials.get(index)))message="";else refreshLists();
     }
     void openList(File file)throws IOException {
-        session.open(file);icons.clear();offset=0;message=session.message;dropdownOpen=false;
+        try {session.open(file);dropdownOpen=false;}
+        finally {refreshLists();message=session.message;}
     }
     private int listVisibleCount(){return Math.max(1,Math.min(6,(layout.rowsBottom-layout.top-75)/ChecklistLayout.BUTTON_HEIGHT));}
     private void clampListOffset(){listOffset=Math.max(0,Math.min(listOffset,Math.max(0,files.size()-listVisibleCount())));}
@@ -117,7 +128,7 @@ public final class BuildListPopup extends GuiScreen {
         }
         int done=0;if(build!=null)for(BuildListStore.Row row:build.materials)if(build.checked.contains(row.key))done++;
         String status=message.isEmpty()?(showPlans?count+" item"+(count==1?"":"s")+" to build":done+" / "+count+" completed"):message;
-        func_73731_b(field_73886_k,text(status,w-14),x+7,y+h-37,message.isEmpty()?0xB7CCE4:0xFFB4A4);
+        func_73731_b(field_73886_k,text(status,w-14),x+7,y+h-37,message.isEmpty()||BuildListSession.LIST_REMOVED.equals(message)?0xB7CCE4:0xFFB4A4);
         super.func_73863_a(mouseX,mouseY,partial);
         if(dropdownOpen){drawLists(mouseX,mouseY);return;}
         int hovered=layout.rowAt(mouseX,mouseY,offset,count);
@@ -155,7 +166,7 @@ public final class BuildListPopup extends GuiScreen {
         case 5:showPlans=false;offset=0;icons.clear();rebuildControls=true;break;
         case 6:showPlans=true;offset=0;icons.clear();rebuildControls=true;break;
         case 7:
-            files=session.store.files();listOffset=0;dropdownOpen=true;
+            refreshLists();listOffset=0;dropdownOpen=true;
             int selected=files.indexOf(session.selected);if(selected>=0)listOffset=selected;
             clampListOffset();break;
         default:break;

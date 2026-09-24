@@ -67,6 +67,7 @@ public final class BuildListTest {
             check(layout.clampOffset(9,0)==0&&layout.clampOffset(-9,35)==0,"empty and negative scrolls are bounded");
         }
         PopupTest.run(resumed,file,renamed);
+        ListFilesTest.run(root,original);
         String text=new String(original,"UTF-8");
         expectRejected(store,file,text.replace("\"version\": 1","\"version\": 99"),"unknown version");
         expectRejected(store,file,text.replace("\"minecraftVersion\": \"1.6.4\"","\"minecraftVersion\": \"1.7.10\""),"different game version");
