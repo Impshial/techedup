@@ -25,6 +25,7 @@ button.favorite-toggle:hover{background:#faedf2;color:#ac315b}
 .favorite-item-row{display:flex;align-items:center;gap:6px;min-width:0}
 .favorite-item-row>.item-button,.favorite-item-row>.inventory-match{flex:1;min-width:0}
 .recipe-output-label,.named-item{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.recipe-detail-item{padding:2px 0;font-size:14px;line-height:1.5;text-align:left}
 .build-entry .favorite-toggle{margin-left:-4px}
 .material-list-actions{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 14px;margin-top:8px}
 .material-list-actions .link-button{font-size:14px}
