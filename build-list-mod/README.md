@@ -1,10 +1,10 @@
 # TechIt Build List — Minecraft 1.6.4
 
-A client mod that opens calculator exports as checklists in Minecraft. A **green checkmark** joins the pack's inventory tabs. **I** toggles a compact checklist on the right; change **TechIt checklist** in Minecraft's Controls to rebind it. The default applies only when no saved binding exists. **J** is left available for JourneyMap.
+A client mod that opens calculator exports as checklists in Minecraft. A **green checkmark** joins the pack's inventory tabs. **I** shows a compact checklist HUD on the right; change **TechIt checklist** in Minecraft's Controls to rebind it. The default applies only when no saved binding exists. **J** is left available for JourneyMap.
 
 ## Install
 
-1. Download [techit-build-list-0.2.2.jar](../dist/downloads/techit-build-list-0.2.2.jar).
+1. Download [techit-build-list-0.3.0.jar](../dist/downloads/techit-build-list-0.3.0.jar).
 2. With Minecraft closed, put the JAR in the TechIt-ng instance's `minecraft/mods` folder, replacing any older `techit-build-list` JAR, then launch the game.
 
 The mod creates `minecraft/techit-builds` and `minecraft/techit-builds/.progress` on its first load. No server installation or recipe-exporter mod is required. It adds no blocks, items, or world data.
@@ -25,16 +25,16 @@ For this PrismLauncher installation, the folder is:
 
 Exports are named after their planned items, for example `Resonant Energy Cell.techit.json` or `2x ME Controller + Pulverizer.techit.json`. You can rename them to distinguish projects; keep the `.techit.json` ending. **Reload** rereads an open file after replacing it. **Lists** returns to the file picker. Removed files disappear from both views while they are open. If the selected file is removed, the inventory view returns to the picker and the popup clears its items. **Reload** also clears an unavailable list; short status messages replace file paths, with technical details kept in the game log.
 
-## Compact popup
+## Checklist HUD
 
-- Press **I** to open or close the selected checklist. The last selected list is remembered across game sessions.
-- Use **Materials** for checkable totals and **To Build** for target items and quantities.
-- Click the list-name dropdown to switch saved lists; scroll it when there are more entries.
-- Click material rows to check them off. Scroll over the list or use Page Up/Page Down.
-- **_** minimizes it to the bottom right; click **Build list ^** to expand it upward. **x**, Escape, or **I** closes it.
+- Press **I** to show the selected checklist while playing. Movement, mouse-look, mining, placing blocks and hotbar scrolling work normally.
+- Press **I** again to enable the cursor for its controls. Press **I** or Escape to resume gameplay with the checklist still visible. Escape closes an open list dropdown first.
+- Use **Materials** for checkable totals and **To Build** for target items and quantities. The last selected list is remembered across game sessions.
+- In cursor mode, click the list-name dropdown to switch saved lists, click material rows to check them off, and scroll over the list or use Page Up/Page Down.
+- **_** minimizes to the bottom right and immediately resumes gameplay. Press **I**, then click **Build list ^** to expand it. **x** hides the checklist completely.
 - **Open calculator** opens the full inventory tab with the same list and progress.
 
-The popup does not pause the world. Like other Minecraft GUI windows, it releases the cursor for clicking, including while minimized; close it with **I** or Escape to return to mouse-look gameplay.
+The HUD temporarily hides while other screens are open and follows Minecraft's F1 setting. The in-game hint uses your configured key. Cursor mode releases the mouse for clicking; it does not pause the world.
 
 ## Use the checklist
 
@@ -45,7 +45,7 @@ The popup does not pause the world. Like other Minecraft GUI windows, it release
 - The inventory tab or **Inventory** button returns to the inventory; Escape closes the screen.
 - In the master list picker, each checkbox reflects whether all materials are complete. Click the checkbox to mark or clear the whole material list; click its name to open it.
 
-Progress is manual: version 0.2.2 does not count inventory contents or craft items. Each export is a snapshot of the calculator's **processed material totals**, even when the website's Ore Level display is checked. The mod neither recalculates recipes nor connects to the website. Use the same pack/configuration as the calculator because numeric IDs can differ between installations.
+Progress is manual: version 0.3.0 does not count inventory contents or craft items. Each export is a snapshot of the calculator's **processed material totals**, even when the website's Ore Level display is checked. The mod neither recalculates recipes nor connects to the website. Use the same pack/configuration as the calculator because numeric IDs can differ between installations.
 
 Progress files live under `.progress`, keyed by the export's SHA-256. `selection.json` remembers the last selected filename. Renaming an unchanged export preserves progress. Changing its contents starts a new checklist. Original exports are never modified, and deleting the mod leaves the lists and progress available.
 
@@ -61,8 +61,8 @@ node --test tests/minecraft-export.test.js
 
 The build reads the existing PrismLauncher Minecraft, Forge, Gson, Guava, LWJGL, ASM, and TConstruct JARs. Set `PRISM_HOME` to a different PrismLauncher directory or `TECHIT_JDK` to a JDK 8 `bin` directory if needed. The configured instance name is `TechIt-ng`.
 
-The output is `build-list-mod/techit-build-list-0.2.2.jar`, compiled as Java 7 bytecode. Copy a tested release into `dist/downloads/` to publish it with the site. Only this mod's own classes and metadata are distributed; generated Minecraft/Forge compile dependencies remain ignored local build files.
+The output is `build-list-mod/techit-build-list-0.3.0.jar`, compiled as Java 7 bytecode. Copy a tested release into `dist/downloads/` to publish it with the site. Only this mod's own classes and metadata are distributed; generated Minecraft/Forge compile dependencies remain ignored local build files.
 
-The offline integration test imports real calculator exports, restores exact typed NBT (including 64-bit values), tests saved progress, master completion, shared selection, popup bounds and scrolling, actual button hit areas, view/list switching, file deletion during an open GUI, failed reloads, progress preservation, and checks the packaged bytecode. The earlier inventory tab and compact popup were confirmed in the installed game; the latest sizing and dropdown changes still need an in-game visual check.
+The offline integration test imports real calculator exports, restores exact typed NBT (including 64-bit values), tests saved progress, master completion, shared selection, popup bounds and scrolling, actual button hit areas, view/list switching, file deletion during an open GUI, failed reloads, progress preservation, HUD/cursor transitions, Escape and minimize behavior, and checks the packaged bytecode. HUD rendering and gameplay input still need an in-game check; the offline tests do not render a game window.
 
 See [FORMAT.md](FORMAT.md) for the export contract.

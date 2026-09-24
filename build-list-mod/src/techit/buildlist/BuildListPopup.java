@@ -6,16 +6,24 @@ import java.io.File;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.*;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 
-/** A non-pausing, right-docked checklist with a clickable minimized state. */
+/** Shared checklist rendering for the passive HUD and its optional cursor screen. */
 public final class BuildListPopup extends GuiScreen {
+    interface Controller {
+        void resumeGame();
+        void hide();
+        void closed();
+    }
     private final BuildListSession session;
+    private final Controller controller;
     private final BuildListIcons icons=new BuildListIcons();
     private ChecklistLayout layout;
     private GuiButton listButton;
+    private GuiButton restoreButton;
     private List<File> files=Collections.emptyList();
     private int offset;
     private int listOffset;
@@ -23,9 +31,18 @@ public final class BuildListPopup extends GuiScreen {
     private BuildListStore.Build displayedBuild;
     private boolean minimized,rebuildControls,showPlans,dropdownOpen;
     private String message="";
+    private String hudKey;
     private static final NumberFormat NUM=NumberFormat.getIntegerInstance(Locale.US);
 
-    BuildListPopup(BuildListSession session){this.session=session;session.chooseOnlyList();displayedBuild=session.build;message=session.store==null?BuildListMod.error:session.message;}
+    BuildListPopup(BuildListSession session){this(session,null);}
+    BuildListPopup(BuildListSession session,Controller controller){this.session=session;this.controller=controller;session.chooseOnlyList();displayedBuild=session.build;message=session.store==null?BuildListMod.error:session.message;}
+    void drawHud(Minecraft mc,ScaledResolution resolution,float partial,String key) {
+        int width=resolution.func_78326_a(),height=resolution.func_78328_b();
+        if(layout==null||width!=field_73880_f||height!=field_73881_g)func_73872_a(mc,width,height);
+        hudKey=key;
+        try {func_73863_a(-1,-1,partial);}finally{hudKey=null;}
+    }
+    @Override public void func_73874_b(){dropdownOpen=false;if(controller!=null)controller.closed();}
     @Override public boolean func_73868_f(){return false;}
     @Override public void func_73876_c(){if(++refreshTicks>=20){refreshTicks=0;refreshLists();}}
     void refreshLists() {
@@ -38,7 +55,8 @@ public final class BuildListPopup extends GuiScreen {
     @Override public void func_73866_w_() {
         layout=new ChecklistLayout(field_73880_f,field_73881_g);field_73887_h.clear();
         if(minimized) {
-            field_73887_h.add(new GuiButton(3,layout.badgeLeft,layout.badgeTop,layout.badgeWidth-22,ChecklistLayout.BUTTON_HEIGHT,"Build list ^"));
+            restoreButton=new GuiButton(3,layout.badgeLeft,layout.badgeTop,layout.badgeWidth-22,ChecklistLayout.BUTTON_HEIGHT,"Build list ^");
+            field_73887_h.add(restoreButton);
             field_73887_h.add(new GuiButton(2,layout.badgeLeft+layout.badgeWidth-20,layout.badgeTop,20,ChecklistLayout.BUTTON_HEIGHT,"x"));
         } else {
             field_73887_h.add(new GuiButton(1,layout.left+layout.width-48,layout.top+3,20,ChecklistLayout.BUTTON_HEIGHT,"_"));
@@ -94,7 +112,7 @@ public final class BuildListPopup extends GuiScreen {
     private String text(String value,int width){return field_73886_k.func_78269_a(value,Math.max(1,width));}
     @Override public void func_73863_a(int mouseX,int mouseY,float partial) {
         // Leave the world visible outside the panel, without a full-screen backdrop.
-        if(minimized){super.func_73863_a(mouseX,mouseY,partial);return;}
+        if(minimized){restoreButton.field_73744_e=hudKey==null?"Build list ^":text("Build list ["+hudKey+"]",layout.badgeWidth-30);super.func_73863_a(mouseX,mouseY,partial);return;}
         int x=layout.left,y=layout.top,w=layout.width,h=layout.height;
         func_73734_a(x-1,y-1,x+w+1,y+h+1,0xFFADBFCF);
         func_73734_a(x,y,x+w,y+h,0xF01F2A38);
@@ -128,6 +146,7 @@ public final class BuildListPopup extends GuiScreen {
         }
         int done=0;if(build!=null)for(BuildListStore.Row row:build.materials)if(build.checked.contains(row.key))done++;
         String status=message.isEmpty()?(showPlans?count+" item"+(count==1?"":"s")+" to build":done+" / "+count+" completed"):message;
+        if(hudKey!=null&&message.isEmpty())status=(showPlans?count+" to build":done+" / "+count)+" | "+hudKey+": controls";
         func_73731_b(field_73886_k,text(status,w-14),x+7,y+h-37,message.isEmpty()||BuildListSession.LIST_REMOVED.equals(message)?0xB7CCE4:0xFFB4A4);
         super.func_73863_a(mouseX,mouseY,partial);
         if(dropdownOpen){drawLists(mouseX,mouseY);return;}
@@ -159,8 +178,8 @@ public final class BuildListPopup extends GuiScreen {
     }
     @Override protected void func_73875_a(GuiButton button) {
         switch(button.field_73741_f) {
-        case 1:minimized=true;rebuildControls=true;break;
-        case 2:field_73882_e.func_71373_a(null);break;
+        case 1:minimized=true;rebuildControls=true;if(controller!=null)controller.resumeGame();break;
+        case 2:if(controller!=null)controller.hide();else field_73882_e.func_71373_a(null);break;
         case 3:minimized=false;rebuildControls=true;break;
         case 4:BuildListClient.calculator();break;
         case 5:showPlans=false;offset=0;icons.clear();rebuildControls=true;break;
@@ -174,7 +193,9 @@ public final class BuildListPopup extends GuiScreen {
     }
     @Override protected void func_73869_a(char character,int code) {
         if(code==Keyboard.KEY_ESCAPE) {
-            if(dropdownOpen)dropdownOpen=false;else field_73882_e.func_71373_a(null);
+            if(dropdownOpen)dropdownOpen=false;
+            else if(controller!=null)controller.resumeGame();
+            else field_73882_e.func_71373_a(null);
         }
         else if(dropdownOpen) {
             if(code==Keyboard.KEY_DOWN)listOffset++;
