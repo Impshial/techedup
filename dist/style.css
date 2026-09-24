@@ -10,6 +10,7 @@
 .index-tabs button{border:0;border-bottom:3px solid transparent;background:none;padding:10px 0;color:var(--muted);font-size:14px;font-weight:600}
 .index-tabs button[aria-selected="true"]{border-bottom-color:var(--blue);color:var(--blue)}
 #index-panel{display:flex;flex-direction:column;min-height:0;flex:1}
+.index-bottom{flex:none;height:24px;height:calc(24px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line)}
 #index-panel>.index-heading,#index-panel>.search,#index-panel>.filters{flex-shrink:0}
 .favorites-status{font-size:13px;color:#9d3e31;line-height:1.5;margin:0 0 12px;flex-shrink:0}
 button.favorite-toggle{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex:none;padding:5px;border:0;border-radius:4px;background:transparent;color:#6d7e92;vertical-align:middle}
