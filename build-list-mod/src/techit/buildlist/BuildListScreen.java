@@ -1,0 +1,174 @@
+package techit.buildlist;
+
+import java.io.*;
+import java.awt.Desktop;
+import java.text.NumberFormat;
+import java.util.*;
+import net.minecraft.client.gui.*;
+import net.minecraft.client.renderer.RenderHelper;
+import net.minecraft.client.renderer.entity.RenderItem;
+import net.minecraft.client.renderer.texture.TextureMap;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraftforge.fluids.*;
+import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
+import org.lwjgl.opengl.GL11;
+
+public final class BuildListScreen extends GuiScreen {
+    private final BuildListStore store;
+    private BuildListStore.Build build;
+    private File selected;
+    private List<File> files=new ArrayList<File>();
+    private GuiTextField search;
+    private GuiButton hideButton,modeButton;
+    private int left,top,panelWidth,panelHeight,rowsTop,rowsBottom,offset;
+    private boolean hideCompleted,showPlans;
+    private String query="",message="";
+    private final RenderItem renderer=new RenderItem();
+    private final Map<String,ItemStack> icons=new HashMap<String,ItemStack>();
+    private final Set<String> badIcons=new HashSet<String>();
+    private static final NumberFormat NUM=NumberFormat.getIntegerInstance(Locale.US);
+    public BuildListScreen(BuildListStore store){this.store=store;if(store!=null)files=store.files();else message=BuildListMod.error;}
+    @Override public void func_73866_w_() {
+        Keyboard.enableRepeatEvents(true);
+        panelWidth=Math.min(440,field_73880_f-16);panelHeight=Math.min(340,field_73881_g-46);
+        left=(field_73880_f-panelWidth)/2;top=Math.max(32,(field_73881_g-panelHeight+24)/2);
+        rowsTop=top+64;rowsBottom=top+panelHeight-49;
+        field_73887_h.clear();
+        search=new GuiTextField(field_73886_k,left+10,top+35,Math.max(70,panelWidth-211),18);
+        search.func_73804_f(100);search.func_73782_a(query);
+        hideButton=new GuiButton(102,left+panelWidth-194,top+34,100,20,hideCompleted?"Show completed":"Hide completed");
+        modeButton=new GuiButton(103,left+panelWidth-90,top+34,80,20,showPlans?"Materials":"To build");
+        hideButton.field_73742_g=build!=null;modeButton.field_73742_g=build!=null;
+        field_73887_h.add(hideButton);field_73887_h.add(modeButton);
+        int y=top+panelHeight-26,w=(panelWidth-26)/4;
+        field_73887_h.add(new GuiButton(104,left+10,y,w,20,build==null?"Refresh":"Lists"));
+        field_73887_h.add(new GuiButton(105,left+14+w,y,w,20,"Open folder"));
+        field_73887_h.add(new GuiButton(106,left+18+w*2,y,w,20,"Reload"));
+        field_73887_h.add(new GuiButton(107,left+22+w*3,y,w,20,"Inventory"));
+        BuildListClient.addTabs(field_73887_h,left,top);
+    }
+    @Override public boolean func_73868_f(){return false;}
+    @Override public void func_73876_c(){search.func_73780_a();}
+    @Override public void func_73874_b(){Keyboard.enableRepeatEvents(false);}
+    private String text(String value,int width){return field_73886_k.func_78269_a(value,Math.max(8,width));}
+    private int visibleCount(){return Math.max(1,(rowsBottom-rowsTop)/27);}
+    private List<File> visibleFiles(){List<File> result=new ArrayList<File>();for(File file:files)if(file.getName().toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT)))result.add(file);return result;}
+    private List<BuildListStore.Row> visibleRows(){
+        List<BuildListStore.Row> result=new ArrayList<BuildListStore.Row>();if(build==null)return result;
+        for(BuildListStore.Row row:showPlans?build.plans:build.materials)
+            if((!hideCompleted||!build.checked.contains(row.key))&&row.name.toLowerCase(Locale.ROOT).contains(query.toLowerCase(Locale.ROOT)))result.add(row);
+        return result;
+    }
+    @Override public void func_73863_a(int mouseX,int mouseY,float partial) {
+        func_73873_v_();
+        func_73734_a(left-2,top-2,left+panelWidth+2,top+panelHeight+2,0xFF080B10);
+        func_73734_a(left,top,left+panelWidth,top+panelHeight,0xFFCBD0D7);
+        func_73734_a(left+2,top+2,left+panelWidth-2,top+26,0xFF24374D);
+        func_73731_b(field_73886_k,text(build==null?"Build Lists":build.title,panelWidth-24),left+10,top+9,0xFFFFFF);
+        search.func_73795_f();
+        if(query.isEmpty()&&!search.func_73806_l())func_73731_b(field_73886_k,"Search...",left+14,top+40,0x777777);
+        func_73734_a(left+8,rowsTop-3,left+panelWidth-8,rowsBottom,0xFF1F2A38);
+        int count=build==null?visibleFiles().size():visibleRows().size();offset=Math.max(0,Math.min(offset,Math.max(0,count-visibleCount())));
+        List<File> shownFiles=build==null?visibleFiles():null;List<BuildListStore.Row> rows=build==null?null:visibleRows();
+        for(int i=0;i<visibleCount()&&i+offset<count;i++) {
+            int y=rowsTop+i*27;boolean hover=mouseX>=left+9&&mouseX<left+panelWidth-14&&mouseY>=y&&mouseY<y+26;
+            if(hover)func_73734_a(left+9,y,left+panelWidth-14,y+26,0xFF364B63);
+            if(build==null) {
+                File file=shownFiles.get(i+offset);
+                func_73731_b(field_73886_k,text(file.getName().replaceFirst("(?i)\\.techit\\.json$",""),panelWidth-35),left+16,y+8,0xFFFFFF);
+            } else drawRow(rows.get(i+offset),y);
+        }
+        if(count==0) {
+            String empty=build==null?(files.isEmpty()?"Save a Minecraft export in techit-builds.":"No matching lists."):"No materials to show.";
+            func_73731_b(field_73886_k,text(empty,panelWidth-32),left+16,rowsTop+12,0xCCD6E4);
+        }
+        if(count>visibleCount()) {
+            int track=rowsBottom-rowsTop,thumb=Math.max(10,track*visibleCount()/count),y=rowsTop+(track-thumb)*offset/Math.max(1,count-visibleCount());
+            func_73734_a(left+panelWidth-12,rowsTop,left+panelWidth-9,rowsBottom,0xFF536377);
+            func_73734_a(left+panelWidth-12,y,left+panelWidth-9,y+thumb,0xFFB9D6F7);
+        }
+        String status=message;
+        if(status.isEmpty()) {
+            if(build==null)status=files.size()+" list"+(files.size()==1?"":"s");
+            else {List<BuildListStore.Row> all=showPlans?build.plans:build.materials;int done=0;for(BuildListStore.Row row:all)if(build.checked.contains(row.key))done++;
+                status=(showPlans?"To build":"Materials")+" - "+done+" / "+all.size()+" completed";}
+        }
+        func_73731_b(field_73886_k,text(status,panelWidth-20),left+10,top+panelHeight-42,message.isEmpty()?0x34465B:0x8B2020);
+        super.func_73863_a(mouseX,mouseY,partial);
+    }
+    private ItemStack stack(BuildListStore.Row row) {
+        if(icons.containsKey(row.key))return icons.get(row.key);
+        ItemStack stack=null;
+        try {
+            if(row.itemId<Item.field_77698_e.length&&Item.field_77698_e[row.itemId]!=null) {
+                stack=new ItemStack(row.itemId,1,row.metadata);
+                if(row.nbt!=null)stack.field_77990_d=TypedNbt.parse(row.nbt);
+            }
+        }catch(Exception e){badIcons.add(row.key);BuildListMod.logger.warning("Item icon "+row.ref+": "+e.getMessage());}
+        icons.put(row.key,stack);return stack;
+    }
+    private void drawRow(BuildListStore.Row row,int y) {
+        boolean checked=build.checked.contains(row.key);
+        func_73734_a(left+16,y+7,left+27,y+18,checked?0xFF568663:0xFF9DAABC);
+        func_73731_b(field_73886_k,checked?"x":"",left+19,y+8,0xFFFFFF);
+        ItemStack item=row.kind.equals("item")?stack(row):null;
+        if(item!=null&&!badIcons.contains(row.key)) {
+            GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);GL11.glPushMatrix();
+            try {RenderHelper.func_74520_c();renderer.func_82406_b(field_73886_k,field_73882_e.func_110434_K(),item.func_77946_l(),left+35,y+4);}
+            catch(Throwable e){badIcons.add(row.key);BuildListMod.logger.warning("Item renderer "+row.ref+": "+e.getClass().getSimpleName());}
+            finally {GL11.glPopMatrix();GL11.glPopAttrib();RenderHelper.func_74518_a();GL11.glColor4f(1,1,1,1);}
+        } else if(row.kind.equals("fluid")) {
+            Fluid fluid=row.fluidName==null?FluidRegistry.getFluid(row.fluidId):FluidRegistry.getFluid(row.fluidName);
+            if(fluid!=null&&fluid.getIcon()!=null) {
+                field_73882_e.func_110434_K().func_110577_a(TextureMap.field_110575_b);
+                int color=fluid.getColor();GL11.glColor4f((color>>16&255)/255f,(color>>8&255)/255f,(color&255)/255f,1);
+                func_94065_a(left+35,y+4,fluid.getIcon(),16,16);GL11.glColor4f(1,1,1,1);
+            }
+        } else func_73731_b(field_73886_k,"?",left+40,y+8,0xABBAD0);
+        String count=NUM.format(row.quantity)+(row.kind.equals("fluid")?" mB":"");
+        int quantityWidth=field_73886_k.func_78256_a(count),right=left+panelWidth-20;
+        func_73731_b(field_73886_k,count,right-quantityWidth,y+3,checked?0x88B699:0xFFFFFF);
+        func_73731_b(field_73886_k,text(row.name,panelWidth-84-quantityWidth),left+59,y+3,checked?0x91A497:0xFFFFFF);
+        String detail="";
+        if(row.kind.equals("fluid"))detail="Fluid";
+        else if(item!=null) {
+            int size=Math.max(1,item.func_77976_d());long full=row.quantity/size,leftover=row.quantity%size;
+            detail=size>1&&full>0?NUM.format(full)+" stack"+(full==1?"":"s")+(leftover>0?" + "+leftover:""):"";
+        } else detail=row.kind.equals("unresolved")?"Unresolved ingredient":"Item unavailable in this instance";
+        if(badIcons.contains(row.key))detail="Icon unavailable";
+        func_73731_b(field_73886_k,text(detail,panelWidth-82),left+59,y+15,0xA8B8CD);
+    }
+    @Override protected void func_73864_a(int x,int y,int button) {
+        super.func_73864_a(x,y,button);search.func_73793_a(x,y,button);
+        if(button!=0||x<left+9||x>=left+panelWidth-14||y<rowsTop||y>=rowsBottom)return;
+        int index=offset+(y-rowsTop)/27;
+        try {
+            if(build==null) {List<File> shown=visibleFiles();if(index<shown.size())open(shown.get(index));}
+            else {List<BuildListStore.Row> rows=visibleRows();if(index<rows.size()){store.toggle(build,rows.get(index));message="";}}
+        }catch(Exception e){message=e.getMessage();}
+    }
+    private void open(File file)throws IOException {build=store.load(file);selected=file;message=build.warning;offset=0;query="";icons.clear();badIcons.clear();func_73866_w_();}
+    @Override protected void func_73875_a(GuiButton button) {
+        try {
+            switch(button.field_73741_f) {
+            case 102:hideCompleted=!hideCompleted;offset=0;hideButton.field_73744_e=hideCompleted?"Show completed":"Hide completed";break;
+            case 103:showPlans=!showPlans;offset=0;icons.clear();badIcons.clear();modeButton.field_73744_e=showPlans?"Materials":"To build";break;
+            case 104:build=null;selected=null;files=store==null?new ArrayList<File>():store.files();query="";offset=0;message="";func_73866_w_();break;
+            case 105:if(store!=null&&Desktop.isDesktopSupported())Desktop.getDesktop().open(store.directory);else message="Folder: minecraft/techit-builds";break;
+            case 106:if(store!=null){if(selected!=null)open(selected);else {files=store.files();message="";}}break;
+            case 107:BuildListClient.inventory();break;
+            default:break;
+            }
+        }catch(Exception e){message=e.getMessage()==null?"Could not complete that action.":e.getMessage();}
+    }
+    @Override protected void func_73869_a(char character,int code) {
+        if(code==Keyboard.KEY_ESCAPE){field_73882_e.func_71373_a(null);return;}
+        if(search.func_73802_a(character,code)){query=search.func_73781_b();offset=0;return;}
+        if(code==Keyboard.KEY_NEXT)offset+=visibleCount();else if(code==Keyboard.KEY_PRIOR)offset-=visibleCount();
+    }
+    @Override public void func_73867_d() {
+        super.func_73867_d();int wheel=Mouse.getEventDWheel();if(wheel!=0)offset+=wheel>0?-3:3;
+    }
+}

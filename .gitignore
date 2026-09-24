@@ -11,9 +11,12 @@ source/
 node_modules/
 *.log
 *.jar
+!dist/downloads/techit-build-list-*.jar
 *.zip
 exporter/build/
 exporter/test-build/
+build-list-mod/build/
+build-list-mod/test-build/
 dist/*.pending.json
 dist/image-mapping.csv
 dist/image-mapping-guide.txt

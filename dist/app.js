@@ -3,7 +3,7 @@ import { groupItemsByMod, renderRecipeDiagram, sortRecipeMethods, renderIngredie
 import { createItemSearch } from './search.js?v=1';
 import { capturePage, createNavigation } from './navigation.js?v=3';
 import { createBuildList } from './build-list.js?v=1';
-import { materialListExport } from './material-export.js?v=1';
+import { materialListExport } from './material-export.js?v=2';
 import { createFavorites, favoritesStorageKey, renderFavoriteButton } from './favorites.js?v=2';
 
 const $ = selector => document.querySelector(selector);
@@ -197,7 +197,7 @@ function addToBuildList() {
   $('#live-status').textContent=`Added ${amount({...state.target,count:state.quantity})} × ${names(state.target)} to the build list. ${buildList.size} plans.`;
 }
 function exportControl(scope) {
-  return `<details id="${scope}-export-menu" class="material-export" data-export-scope="${scope}"><summary aria-label="Export ${scope==='current'?'current material list':'build list'}">Export <span aria-hidden="true">▾</span></summary><div class="export-options"><button type="button" data-material-export="json">JSON</button><button type="button" data-material-export="csv">CSV</button><button type="button" data-material-export="markdown">Markdown Checklist</button></div></details>`;
+  return `<details id="${scope}-export-menu" class="material-export" data-export-scope="${scope}"><summary aria-label="Export ${scope==='current'?'current material list':'build list'}">Export <span aria-hidden="true">▾</span></summary><div class="export-options"><button type="button" data-material-export="minecraft">Minecraft</button><button type="button" data-material-export="json">JSON</button><button type="button" data-material-export="csv">CSV</button><button type="button" data-material-export="markdown">Markdown Checklist</button></div></details>`;
 }
 function showBuildList() {
   const entries=buildList.entries,total=buildList.total();
@@ -237,7 +237,7 @@ function exportMaterials(format,menu) {
   try {
     const entries=current?[{target:state.target,quantity:state.quantity}]:buildList.entries;
     const materials=current?state.result.materials:buildList.total().materials;
-    const file=materialListExport(format,entries,materials,names,scope);
+    const file=materialListExport(format,entries,materials,names,scope,state.catalog);
     const url=URL.createObjectURL(new Blob([file.content],{type:file.type}));
     const link=document.createElement('a');
     link.href=url;link.download=file.filename;menu.append(link);
@@ -377,7 +377,7 @@ async function start() {
     const page=navigation.start(pageSnapshot(),'item index');
     navigationReady=true;restorePage(page);
     $('#live-status').textContent = 'Recipe catalog ready.';
-  } catch (error) { $('#item-list').innerHTML = '<p class="empty">Catalog unavailable.</p>'; $('#view').innerHTML = `<div class="notice">${html(error.message)}</div>`; }
+  } catch (error) { console.error(error); $('#item-list').innerHTML = '<p class="empty">Catalog unavailable.</p>'; $('#view').innerHTML = `<div class="notice">${html(error.message)}</div>`; }
 }
 document.addEventListener('toggle',event=>{
   const target=event.target;

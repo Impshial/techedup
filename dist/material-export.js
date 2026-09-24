@@ -1,3 +1,5 @@
+import { minecraftBuildListExport } from './minecraft-export.js?v=1';
+
 const csvCell = value => {
   let text = String(value ?? '');
   // Keep names and IDs as text when opened in a spreadsheet.
@@ -6,7 +8,8 @@ const csvCell = value => {
 };
 const markdownText = value => String(value).replace(/[\r\n]+/g, ' ').replace(/[\\`*_[\]<>]/g, '\\$&');
 
-export function materialListExport(format, entries, materials, nameFor, scope = 'build') {
+export function materialListExport(format, entries, materials, nameFor, scope = 'build', catalog = null) {
+  if(format==='minecraft')return minecraftBuildListExport(entries,materials,nameFor,scope,catalog);
   const filename = scope === 'current' ? 'techit-material-list' : 'techit-build-list';
   const title = scope === 'current' ? 'Material list' : 'Build list';
   const record = (stack, quantity) => ({

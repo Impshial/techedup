@@ -12,6 +12,12 @@ There is no database server. `dist/catalog.json` is the normalized recipe catalo
 
 `source/runtime/recipes-*.json` retains original game snapshots. `source/runtime/catalog.json` is rebuilt from them; `audit/` stores source hashes, normalization exceptions, image provenance, and inspected code. Only `dist/` is served by the website.
 
+## Minecraft build-list mod
+
+The client-side [TechIt Build List mod](build-list-mod/README.md) displays exported lists in a book tab beside the pack's inventory tabs, or with the configurable **J** key. Download the [1.6.4 mod JAR](dist/downloads/techit-build-list-0.1.0.jar) and put it in the instance's `minecraft/mods` folder before launching.
+
+Choose **Export → Minecraft** for the current plan or combined Build list. Save the `.techit.json` file into `minecraft/techit-builds`, then use **Refresh** in the mod. The mod creates that folder and its progress directory on first load. Checkboxes persist across game sessions; no running website or server mod is required. See the [instructions and format documentation](build-list-mod/README.md) for details.
+
 ## Build and run
 
 For the website, only Node.js is needed to validate the committed static files. Python can serve the local preview:

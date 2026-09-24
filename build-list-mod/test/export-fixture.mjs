@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import {Catalog} from '../../dist/planner.js';
+import {materialListExport} from '../../dist/material-export.js';
+const catalog=new Catalog(JSON.parse(fs.readFileSync(new URL('../../dist/catalog.json',import.meta.url),'utf8')));
+const refs=['item:917:4','item:10273:1@2da9e52da141','fluid:33'];
+const plans=refs.map(ref=>({target:{ref,count:1},quantity:ref.startsWith('fluid:')?288:1}));
+const materials=refs.map(ref=>({stack:{ref,count:1},count:ref.startsWith('fluid:')?288:ref.includes('@')?6:1,reasons:['chosen']}));
+const file=materialListExport('minecraft',plans,materials,s=>catalog.item(s.ref).name,'build',catalog);
+const directory=fileURLToPath(new URL('../test-build/',import.meta.url));fs.mkdirSync(directory,{recursive:true});
+fs.writeFileSync(directory+'/from-calculator.techit.json',file.content);
