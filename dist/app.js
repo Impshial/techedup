@@ -3,6 +3,7 @@ import { groupItemsByMod, renderRecipeDiagram, sortRecipeMethods } from './recip
 import { createItemSearch } from './search.js?v=1';
 import { capturePage, createNavigation } from './navigation.js?v=3';
 import { createBuildList } from './build-list.js?v=1';
+import { materialListExport } from './material-export.js?v=1';
 import { createFavorites, favoritesStorageKey, renderFavoriteButton } from './favorites.js?v=1';
 
 const $ = selector => document.querySelector(selector);
@@ -190,10 +191,13 @@ function addToBuildList() {
   setTimeout(()=>{if(button.isConnected)button.textContent='Add to build list';},1600);
   $('#live-status').textContent=`Added ${amount({...state.target,count:state.quantity})} × ${names(state.target)} to the build list. ${buildList.size} plans.`;
 }
+function exportControl(scope) {
+  return `<details id="${scope}-export-menu" class="material-export" data-export-scope="${scope}"><summary aria-label="Export ${scope==='current'?'current material list':'build list'}">Export <span aria-hidden="true">▾</span></summary><div class="export-options"><button type="button" data-material-export="json">JSON</button><button type="button" data-material-export="csv">CSV</button><button type="button" data-material-export="markdown">Markdown Checklist</button></div></details>`;
+}
 function showBuildList() {
   const entries=buildList.entries,total=buildList.total();
   const materials=total.materials.sort((a,b)=>names(a.stack).localeCompare(names(b.stack)));
-  const content=entries.length?`<div class="build-scroll"><div class="build-plans-heading"><span>${entries.length} plan${entries.length===1?'':'s'}</span><button id="clear-build" class="link-button">Clear list</button></div><div class="build-plans">${entries.map(entry=>`<div class="build-entry">${icon(entry.target.ref)}<span class="name">${html(names(entry.target))}</span>${favoriteButton(entry.target.ref)}<span class="count">${amount({...entry.target,count:entry.quantity})}</span><button class="remove-build" data-remove-build="${entry.id}" aria-label="Remove ${html(names(entry.target))} from build list">×</button></div>`).join('')}</div><div class="build-total-heading"><h3>Total materials</h3><small>${materials.length} types</small></div>${materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>'}</div><div class="build-dialog-actions"><button id="copy-build" class="primary wide">Copy total</button><div id="build-copy-fallback" hidden></div></div>`:'<p class="help build-empty">Your build list is empty.</p>';
+  const content=entries.length?`<div class="build-scroll"><div class="build-plans-heading"><span>${entries.length} plan${entries.length===1?'':'s'}</span><button id="clear-build" class="link-button">Clear list</button></div><div class="build-plans">${entries.map(entry=>`<div class="build-entry">${icon(entry.target.ref)}<span class="name">${html(names(entry.target))}</span>${favoriteButton(entry.target.ref)}<span class="count">${amount({...entry.target,count:entry.quantity})}</span><button class="remove-build" data-remove-build="${entry.id}" aria-label="Remove ${html(names(entry.target))} from build list">×</button></div>`).join('')}</div><div class="build-total-heading"><h3>Total materials</h3><small>${materials.length} types</small></div>${materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>'}</div><div class="build-dialog-actions"><div class="build-action-buttons"><button id="copy-build" class="primary">Copy total</button>${exportControl('build')}</div><p id="build-export-error" class="export-error" role="alert" hidden></p><div id="build-copy-fallback" hidden></div></div>`:'<p class="help build-empty">Your build list is empty.</p>';
   openDialog('Build list',content,'build-dialog');
 }
 function removeFromBuildList(id) {
@@ -222,12 +226,31 @@ async function copyBuildList() {
     $('#live-status').textContent='Select and copy the build list total.';
   }
 }
+function exportMaterials(format,menu) {
+  const scope=menu.dataset.exportScope,current=scope==='current';
+  if(current?!state.result:!buildList.size)return;
+  try {
+    const entries=current?[{target:state.target,quantity:state.quantity}]:buildList.entries;
+    const materials=current?state.result.materials:buildList.total().materials;
+    const file=materialListExport(format,entries,materials,names,scope);
+    const url=URL.createObjectURL(new Blob([file.content],{type:file.type}));
+    const link=document.createElement('a');
+    link.href=url;link.download=file.filename;menu.append(link);
+    link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
+    menu.open=false;menu.querySelector('summary').focus();
+    $(`#${scope}-export-error`).hidden=true;
+    $('#live-status').textContent=`Exported ${file.filename}.`;
+  } catch {
+    $(`#${scope}-export-error`).hidden=false;
+    $(`#${scope}-export-error`).textContent='Export failed. Please try again.';
+  }
+}
 function renderPlan() {
   state.result=null;
   try {state.result=calculate(state.catalog,state.target,state.quantity,state);}
   catch(error){$('#view').innerHTML=`<div class="notice">${html(error.message)}</div>`;return;}
   const result=state.result,materials=result.materials.slice().sort((a,b)=>names(a.stack).localeCompare(names(b.stack)));
-  $('#view').innerHTML=`<div class="plan-layout"><section class="card"><div class="card-head"><h3>Crafting & processing tree</h3>${quantityControl()}</div><div class="card-body">${renderNode(result.tree)}</div></section><div class="supplies"><section class="card"><div class="card-head"><h3>Total materials</h3><small>${materials.length} types</small></div><div class="card-body">${materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>'}<button id="add-build" class="primary wide" title="Add the material quantities currently shown">Add to build list</button><div class="material-list-actions"><button id="copy-list" class="link-button">Copy only this list</button><button class="link-button" data-view-build>View total · <span data-build-count>${buildList.size}</span></button></div></div>${result.leftovers.length?`<details class="leftovers"><summary>Leftovers & by-products</summary>${result.leftovers.map(s=>`<div class="named-item">${amount({...s.stack,count:s.count})} × ${html(names(s.stack))}</div>`).join('')}</details>`:''}</section>${renderInventory()}</div></div>`;
+  $('#view').innerHTML=`<div class="plan-layout"><section class="card"><div class="card-head"><h3>Crafting & processing tree</h3>${quantityControl()}</div><div class="card-body">${renderNode(result.tree)}</div></section><div class="supplies"><section class="card materials-card"><div class="card-head"><h3>Total materials</h3><small>${materials.length} types</small></div><div class="card-body">${materials.length?materialRows(materials):'<p class="help">Covered by your inventory.</p>'}<div class="material-add-actions"><button id="add-build" class="primary" title="Add the material quantities currently shown">Add to build list</button>${exportControl('current')}</div><p id="current-export-error" class="export-error" role="alert" hidden></p><div class="material-list-actions"><button id="copy-list" class="link-button">Copy only this list</button><button class="link-button" data-view-build>View total · <span data-build-count>${buildList.size}</span></button></div></div>${result.leftovers.length?`<details class="leftovers"><summary>Leftovers & by-products</summary>${result.leftovers.map(s=>`<div class="named-item">${amount({...s.stack,count:s.count})} × ${html(names(s.stack))}</div>`).join('')}</details>`:''}</section>${renderInventory()}</div></div>`;
 }
 function recipeCard(recipe) {
   const details=Object.entries(recipe.details||{}).map(([k,v])=>`${html(k)}: ${html(v)}`).join(' · ');
@@ -264,6 +287,7 @@ async function copyList() {
   catch { openDialog('Copy only this list', `<p>Select and copy the text below.</p><textarea style="width:100%;min-height:250px" aria-label="Material list">${html(lines.join('\n'))}</textarea>`); }
 }
 document.addEventListener('click', event => {
+  document.querySelectorAll('[data-export-scope][open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false;});
   if(event.target.closest('a[data-home]') && state.catalog) {event.preventDefault();showIndex();return;}
   const button = event.target.closest('button');
   if (!button || !state.catalog) return;
@@ -275,6 +299,7 @@ document.addEventListener('click', event => {
   else if (d.removeBuild) {removeFromBuildList(Number(d.removeBuild));return;}
   else if (button.id === 'clear-build') {buildList.clear();updateBuildControls();showBuildList();$('#close-dialog').focus();$('#live-status').textContent='Build list cleared.';return;}
   else if (button.id === 'copy-build') {copyBuildList();return;}
+  else if (d.materialExport) {exportMaterials(d.materialExport,button.closest('[data-export-scope]'));return;}
   else if ('back' in d) {checkpoint();navigation.back();return;}
   else if ('home' in d) {showIndex();return;}
   else if (d.item) { if (!isGroup(d.item)) $('#data-dialog').close(); select(d.item); }
@@ -313,6 +338,19 @@ document.addEventListener('change', event => {
   checkpoint();
 });
 document.addEventListener('keydown', event => { if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) { event.preventDefault(); $('#search').focus(); } });
+document.addEventListener('keydown',event=>{
+  const menu=$('[data-export-scope][open]');
+  if(!menu?.open)return;
+  if(event.key==='Escape') {event.preventDefault();menu.open=false;menu.querySelector('summary').focus();return;}
+  if(!menu.contains(event.target) || !['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
+  event.preventDefault();
+  const buttons=[...menu.querySelectorAll('[data-material-export]')],index=buttons.indexOf(event.target);
+  const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:index<0?(event.key==='ArrowUp'?buttons.length-1:0):(index+(event.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length;
+  buttons[next].focus();
+});
+document.addEventListener('focusin',event=>{
+  document.querySelectorAll('[data-export-scope][open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false;});
+});
 document.addEventListener('keydown',event=>{
   if(!state.catalog || !event.target.matches('[data-index-tab]') || !['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
   event.preventDefault();
