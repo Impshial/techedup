@@ -5,6 +5,7 @@ import { capturePage, createNavigation } from './navigation.js?v=3';
 import { createBuildList } from './build-list.js?v=2';
 import { materialListExport } from './material-export.js?v=4';
 import { createFavorites, favoritesStorageKey, renderFavoriteButton } from './favorites.js?v=2';
+import { mountAskMe, observeAskHeader } from './ask-me-ui.js?v=6';
 
 const $ = selector => document.querySelector(selector);
 const html = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -14,6 +15,7 @@ const names = stack => state.catalog.item(stack.ref).name;
 const amount = stack => fmt(stack.count) + (stack.ref.startsWith('fluid:') ? ' mB' : '');
 const isGroup = ref => ref.startsWith('ore:') || ref.startsWith('alternatives:') || ref.endsWith(':*');
 let restoringPage = false, restoreFrame = 0, navigationReady = false, scrollTimer = 0;
+let askMe = null;
 const navigation = createNavigation(history, location, restorePage);
 const buildList = createBuildList();
 const favorites = createFavorites(()=>window.localStorage,message=>{
@@ -88,6 +90,7 @@ function restorePage(page) {
     $('#view').innerHTML='<p class="empty-selection">Choose an item from the index.</p>';
   }
   document.title=state.ref?`${state.catalog.item(state.ref).name} · Teched Up`:'Teched Up · Recipe calculator';
+  if (!state.ref || state.tab !== 'plan') askMe?.refresh();
   restoreFrame=requestAnimationFrame(()=>{
     $('#item-list').scrollTop=indexScroll;
     window.scrollTo({top:scrollY,behavior:'instant'});
@@ -201,6 +204,7 @@ function setOreLevel(checked) {
     $('#copy-build').textContent='Copy total';$('#build-copy-fallback').hidden=true;
   }
   document.querySelectorAll('[data-ore-level]').forEach(input=>{input.checked=state.oreLevel;});
+  askMe?.refresh();
 }
 function updateBuildControls() {
   document.querySelectorAll('[data-view-build]').forEach(button=>{button.hidden=!buildList.size;});
@@ -271,6 +275,7 @@ function exportMaterials(format,menu) {
   }
 }
 function renderPlan() {
+  askMe?.refresh();
   state.result=null;state.materialViews=null;
   try {state.materialViews=calculateMaterialViews(state.catalog,state.target,state.quantity,state);state.result=state.materialViews.ore;}
   catch(error){$('#view').innerHTML=`<div class="notice">${html(error.message)}</div>`;return;}
@@ -403,6 +408,10 @@ async function start() {
     state.catalog = new Catalog(await response.json());
     favorites.refresh();
     state.findItems = createItemSearch(state.catalog);
+    askMe = mountAskMe({catalog:state.catalog, getSettings:()=>state, icon, materialDescription, openPlan:plan=>{
+      checkpoint();Object.assign(state,plan,{tab:'plan',process:'',recipeLimit:40,expandedNodes:new Set(['0'])});visitPage();
+      requestAnimationFrame(()=>$('#selected').scrollIntoView({block:'start',behavior:'instant'}));
+    }});
     $('#loaded-count').textContent = fmt(state.catalog.data.recipes.length) + ' recipes loaded';
     const panels=await fetch('./recipe-layouts.json',{cache:'no-store'});
     if(panels.ok)state.layouts=await panels.json();
@@ -436,5 +445,6 @@ $('#back-to-top').addEventListener('click',()=>{
   window.scrollTo({top:0,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
 });
 updateBackToTop();
+observeAskHeader();
 $('#item-list').addEventListener('scroll',saveScroll,{passive:true});
 start();
