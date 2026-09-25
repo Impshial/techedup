@@ -1,4 +1,4 @@
-import { createAskMe, answerQuestion, answerIssues, questionPlan } from './ask-me.js?v=7';
+import { createAskMe, answerQuestion, answerIssues, questionPlan } from './ask-me.js?v=8';
 import { renderRecipeDiagram } from './recipe-view.js?v=9';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -42,12 +42,14 @@ export function mountAskMe({catalog, getSettings, openPlan, icon, materialDescri
     } else if (result.status === 'list') {
       title = `Items matching “${result.query}”`;
       const count = result.items.length, shown = Math.min(count,listLimit);
+      const filterText = [result.filters.includeMods.length ? `From: ${result.filters.includeMods.join(' or ')}.` : '', [...result.filters.excludeMods,...result.filters.excludeTerms].length ? `Excluding: ${[...result.filters.excludeMods,...result.filters.excludeTerms].join(', ')}.` : ''].filter(Boolean).join(' ');
       body = count ? `<p class="ask-help">${fmt(count)} catalog item${count === 1 ? '' : 's'}. Select an item to open it.</p><ul class="ask-choices ask-catalog">${result.items.slice(0,listLimit).map(item => {
         const recipes = catalog.forItem(item.ref).length;
         return `<li><button type="button" data-item="${escape(item.ref)}">${icon(item.ref)}<span>${escape(item.name)}<small>${escape(item.mod || 'Unknown mod')} · ${recipes ? `${fmt(recipes)} recipe${recipes === 1 ? '' : 's'}` : 'No imported recipe'}</small><small>${escape(item.ref)}</small></span></button></li>`;
       }).join('')}</ul><p class="ask-caption">Showing ${fmt(shown)} of ${fmt(count)} items.</p>${shown < count ? '<button type="button" class="link-button" data-ask-more>Show more items</button>' : ''}`
         : '<p class="ask-help">No matching catalog items. Try another name, material type, or ore group.</p>';
-      live.textContent = `${title}. ${fmt(count)} matching catalog items. ${count ? `Showing ${fmt(shown)}.` : ''}`;
+      if (filterText) body = `<p class="ask-caption ask-filter-summary">${escape(filterText)}</p>` + body;
+      live.textContent = `${title}. ${filterText} ${fmt(count)} matching catalog items. ${count ? `Showing ${fmt(shown)}.` : ''}`;
     } else if (result.status === 'choice') {
       body = `<p class="ask-help">${escape(result.message)}</p><div class="ask-choices">${result.choices.map(item => `<button type="button" data-ask-choice="${escape(item.ref)}">${icon(item.ref)}<span>${escape(item.name)}<small>${escape(item.mod || '')} · ${escape(item.ref)}</small></span></button>`).join('')}</div>${result.more ? '<p class="ask-caption">More matches exist. Use a fuller name or item ID to narrow it down.</p>' : ''}`;
       live.textContent = result.message;

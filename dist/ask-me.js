@@ -1,4 +1,5 @@
 import { calculate, calculateMaterialViews, key } from './planner.js?v=8';
+import { createCatalogFilters } from './ask-filters.js?v=1';
 
 const help = 'Try “What do I need for a hundred Basic Processor Assemblies?”, “How many sticks for 25 Template Carriages?” or “List all planks”.';
 const invalidQuantity = 'Choose a whole number from 1 to 1,000,000.';
@@ -146,20 +147,29 @@ export function createAskMe(catalog) {
     const name = normalize(item.name), mod = normalize(item.mod || '');
     return {item, name, tokens:name.split(' '), aliases:new Set([item.ref, ...(item.names || [])].map(s => s.toLowerCase())), labels:new Set([name, `${mod} ${name}`, `${name} ${mod}`])};
   });
+  const extractFilters = createCatalogFilters(entries.map(entry=>entry.item.mod));
   let listEntries;
-  function catalogList(query) {
+  function catalogList(query, filters = {includeMods:[],excludeMods:[],excludeTerms:[]}) {
+    if (/^(?:all|items?|everything)$/i.test(query) && filters.includeMods.length) query = '';
     const normalized = normalize(query), words = normalized.split(' ').filter(Boolean), id = query.toLowerCase();
-    if (!words.length) return error('Name the items you want to list, such as planks or sands.');
+    if (!words.length && !filters.includeMods.length) return error('Name the items you want to list, such as planks or sands.');
     listEntries ||= entries.map(entry => {
       const roles = catalog.roles(entry.item.ref);
       return {...entry, searchTokens:new Set(normalize([entry.item.name,entry.item.mod || '',...roles.map(role=>role.replace(/^ore:/,''))].join(' ')).split(' ')), identifiers:new Set([entry.item.ref,...roles,...roles.map(role=>role.replace(/^ore:/,''))].map(value=>value.toLowerCase()))};
     });
+    const termMatches = (entry,term) => entry.identifiers.has(term.toLowerCase()) || normalize(term).split(' ').every(word=>entry.searchTokens.has(word));
+    for (const term of filters.excludeTerms) {
+      if (!listEntries.some(entry=>termMatches(entry,term))) return error(`No catalog items or mods match the exclusion “${term}”. Try its full name.`);
+    }
     // Whole words avoid matching sand to sandstone or sandwiches. Keep variants
     // distinct and put the closest names ahead of related shapes and components.
-    const items = listEntries.filter(entry => entry.identifiers.has(id) || words.every(word => entry.searchTokens.has(word)))
+    const items = listEntries.filter(entry => (!filters.includeMods.length || filters.includeMods.includes(entry.item.mod))
+      && !filters.excludeMods.includes(entry.item.mod)
+      && !filters.excludeTerms.some(term=>termMatches(entry,term))
+      && (entry.identifiers.has(id) || words.every(word => entry.searchTokens.has(word))))
       .sort((a,b) => Number(b.name===normalized)-Number(a.name===normalized) || a.tokens.length-b.tokens.length || a.item.name.localeCompare(b.item.name) || (a.item.mod || '').localeCompare(b.item.mod || '') || a.item.ref.localeCompare(b.item.ref))
       .map(entry => entry.item);
-    return {status:'list', query, items};
+    return {status:'list', query:query || 'all items', filters, items};
   }
   function candidates(text) {
     const literal = normalize(text), query = normalize(stripArticle(text)), id = text.trim().toLowerCase();
@@ -187,6 +197,12 @@ export function createAskMe(catalog) {
   }
   return {
     interpret(question, selections = {}, settings = {}) {
+      if (clean(question).length > 400) return error('Keep the question under 400 characters.');
+      const filtered = extractFilters(question);
+      if (filtered.active) {
+        const request = parseQuestion(filtered.text, text => candidates(text).exact);
+        if (request.kind === 'list') return filtered.message ? error(filtered.message) : catalogList(request.targetText,filtered.filters);
+      }
       const request = parseQuestion(question, text => candidates(text).exact);
       if (request.status === 'error') return request;
       if (request.kind === 'list') return catalogList(request.targetText);

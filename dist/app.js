@@ -5,7 +5,7 @@ import { capturePage, createNavigation } from './navigation.js?v=3';
 import { createBuildList } from './build-list.js?v=2';
 import { materialListExport } from './material-export.js?v=4';
 import { createFavorites, favoritesStorageKey, renderFavoriteButton } from './favorites.js?v=2';
-import { mountAskMe, observeAskHeader } from './ask-me-ui.js?v=7';
+import { mountAskMe, observeAskHeader } from './ask-me-ui.js?v=8';
 
 const $ = selector => document.querySelector(selector);
 const html = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

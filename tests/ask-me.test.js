@@ -116,6 +116,75 @@ test('catalog lists include raw items and ore members, retain variants, and dedu
   assert.deepEqual(refs('list sands'),['sand']);
 });
 
+test('catalog exclusions handle both supplied examples and equivalent wording',()=>{
+  const list=text=>{const result=ask.interpret(text);assert.equal(result.status,'list',JSON.stringify(result));return result;};
+  const planks=list('list planks').items, ores=list('list ores').items;
+  assert.ok(planks.some(item=>item.mod==='Chisel'));assert.ok(ores.some(item=>item.mod==='Thermal Expansion'));
+  for (const phrase of ['excluding','not using','not including','except','except for','without','not from','not in','not with','but not','do not include',"don't include",'leave out','other than','apart from','omitting']) {
+    const result=list(`Give me a list of planks ${phrase} the chisel mod`);
+    assert.deepEqual(result.items,planks.filter(item=>item.mod!=='Chisel'),phrase);
+    assert.deepEqual(result.filters.excludeMods,['Chisel']);assert.equal(result.query,'planks');
+  }
+  const oreResult=list('give me a list of ores not including thermal expansion');
+  assert.deepEqual(oreResult.items,ores.filter(item=>item.mod!=='Thermal Expansion'));
+  assert.deepEqual(list('list ores excluding Thermal Expansion and Minecraft').items,ores.filter(item=>!['Thermal Expansion','Minecraft'].includes(item.mod)));
+  assert.deepEqual(list('excluding the Chisel mod, give me a list of planks').items,planks.filter(item=>item.mod!=='Chisel'));
+  assert.deepEqual(list('list planks excluding anything from the Chisel mod, please').items,planks.filter(item=>item.mod!=='Chisel'));
+});
+
+test('mod qualifiers work before, within and after catalog questions',()=>{
+  const expected=ask.interpret('list planks').items.filter(item=>item.mod==='Chisel');
+  for (const text of [
+    'Chisel, give me a list of planks', 'From the Chisel mod, give me a list of planks',
+    'give me a Chisel list of planks', 'give me a list of Chisel planks',
+    'give me a list of planks Chisel', 'give me a list of planks from Chisel',
+    'give me a list from Chisel of planks', 'give me a list of planks in the Chisel mod',
+    'What Chisel planks are available?', 'Could you Chisel please list all planks?',
+  ]) {
+    const result=ask.interpret(text);
+    assert.equal(result.status,'list',text);assert.deepEqual(result.items,expected,text);
+    assert.deepEqual(result.filters.includeMods,['Chisel']);
+  }
+  const all=ask.interpret('list planks').items;
+  assert.deepEqual(ask.interpret('list planks from Chisel or Minecraft').items,all.filter(item=>['Chisel','Minecraft'].includes(item.mod)));
+  const byMod=ask.interpret('list all items from Thermal Expansion');
+  assert.equal(byMod.status,'list');assert.ok(byMod.items.length>0);
+  assert.ok(byMod.items.every(item=>item.mod==='Thermal Expansion'));
+});
+
+test('term exclusions combine with mod filters without dropping allowed variants',()=>{
+  const items=[
+    {ref:'birch@one',name:'Birch Planks',mod:'Chisel'}, {ref:'birch@two',name:'Birch Planks',mod:'Chisel'},
+    {ref:'oak',name:'Oak Planks',mod:'Chisel'}, {ref:'dark',name:'Dark Oak Planks',mod:'Example'},
+    {ref:'pine',name:'Pine Planks',mod:'Chisel'}, {ref:'raw',name:'Chisel Planks',mod:'Example'},
+    {ref:'base',name:'Red Ore',mod:'ProjectRed'}, {ref:'extension',name:'Red Ore',mod:'ProjectRed-Exploration'},
+    {ref:'tinker',name:'Ore',mod:"Tinkers' Construct"},
+  ];
+  const resolver=createAskMe(new Catalog({version:3,ores:{},recipes:[],items}));
+  const refs=text=>{const r=resolver.interpret(text);assert.equal(r.status,'list',JSON.stringify(r));return r.items.map(item=>item.ref).sort();};
+  assert.deepEqual(refs('list Chisel planks excluding birch'),['oak','pine']);
+  assert.deepEqual(refs('list planks excluding birch and oak'),['pine','raw']);
+  assert.deepEqual(refs('list planks excluding Chisel and oak'),['raw']);
+  assert.deepEqual(refs('list planks not using the Chisel mod'),['dark','raw'],'filter the actual mod, not words in the item name');
+  assert.deepEqual(refs('list Chisel planks excluding oak and pine'),['birch@one','birch@two']);
+  assert.deepEqual(refs('list Chisel planks excluding birch, oak and pine'),[]);
+  assert.deepEqual(refs('list planks excluding birch@one'),['birch@two','dark','oak','pine','raw']);
+  assert.deepEqual(refs('ProjectRed-Exploration list all ores'),['extension']);
+  assert.deepEqual(refs('list ores excluding ProjectRed'),['extension','tinker']);
+  assert.deepEqual(refs("list ores from Tinkers' Construct"),['tinker']);
+  assert.deepEqual(refs('list ores from tinkers construct'),['tinker']);
+});
+
+test('invalid or contradictory filters never silently return an unfiltered list',()=>{
+  for (const text of ['list planks excluding','list planks not using','list planks excluding the Chisle mod','list planks excluding Unknownxyz','list Chisel planks excluding Chisel','list ores not including Thermal Expansoin']) {
+    const result=ask.interpret(text);assert.equal(result.status,'error',text);assert.ok(result.message);
+  }
+  const request=ready('How much Minecraft Gold Ore for a hundred Pulverized Gold?');
+  assert.equal(request.ingredientRef,'item:14:0');assert.equal(request.quantity,100);
+  assert.equal(ready('50 Gold Ingots from Pulverized Gold').usingRef,'item:8883:1');
+  assert.equal(ask.interpret('2 ME Controllers without copper').status,'error','catalog filters must not silently change a recipe calculation');
+});
+
 test('how-to questions default to one and scale recipe batches without changing output yield',()=>{
   for(const [text,quantity,ore,extra] of [
     ['how do I make pulverized gold',1,1,1],
