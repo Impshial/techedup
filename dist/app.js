@@ -1,11 +1,11 @@
-import { Catalog, calculateMaterialViews, key, fromKey } from './planner.js?v=8';
+import { Catalog, calculateMaterialViews, key, fromKey } from './planner.js?v=9';
 import { groupItemsByMod, renderRecipeDiagram, sortRecipeMethods, renderIngredientChoice } from './recipe-view.js?v=9';
 import { createItemSearch } from './search.js?v=1';
 import { capturePage, createNavigation } from './navigation.js?v=3';
 import { createBuildList } from './build-list.js?v=2';
 import { materialListExport } from './material-export.js?v=4';
 import { createFavorites, favoritesStorageKey, renderFavoriteButton } from './favorites.js?v=2';
-import { mountAskMe, observeAskHeader } from './ask-me-ui.js?v=10';
+import { mountAskMe, observeAskHeader } from './ask-me-ui.js?v=11';
 
 const $ = selector => document.querySelector(selector);
 const html = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

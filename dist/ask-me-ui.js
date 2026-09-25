@@ -1,4 +1,4 @@
-import { createAskMe, answerQuestion, answerIssues, questionPlan } from './ask-me.js?v=10';
+import { createAskMe, answerQuestion, answerIssues, questionPlan } from './ask-me.js?v=11';
 import { renderRecipeDiagram } from './recipe-view.js?v=9';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -33,28 +33,33 @@ export function mountAskMe({catalog, getSettings, openPlan, icon, materialDescri
     }).join('');
     return `<details class="ask-uses"><summary>Used in ${fmt(uses.length)} matching item${uses.length === 1 ? '' : 's'}</summary><ul>${rows}</ul></details>`;
   }
+  function recipeIngredients(plan, settings) {
+    const tree = plan.tree || plan.views.ore.tree;
+    const directEmpty = tree.status === 'owned' ? 'Covered by inventory or an earlier crafting batch.' : 'No final crafting recipe available for this plan.';
+    const recipe = tree.recipe ? `<p class="ask-caption">${escape(tree.recipe.machine || tree.recipe.type)} · ${amount(tree.recipe.output,tree.recipe.output.count)} output per batch</p>${renderRecipeDiagram(catalog,tree.recipe,settings.layouts || {},tree)}<p class="ask-caption">${fmt(tree.runs)} batch${tree.runs === 1 ? '' : 'es'}${tree.extra ? ` · ${fmt(tree.extra)} extra output` : ''}</p>` : '';
+    return recipe + (plan.ingredients.length ? list(plan.ingredients,true) : `<p class="ask-help">${directEmpty}</p>`);
+  }
   function render(focus = false) {
     const oreFocused = document.activeElement?.id === 'ask-ore-level';
     let title = 'Ask Me', body;
     if (result.status === 'ready') {
       const settings = getSettings(), view = answer.views[settings.oreLevel ? 'ore' : 'processed'];
-      title = `${amount(answer.target,answer.request.quantity)} × ${label(answer.target)}`;
+      title = answer.plans ? 'Combined build' : `${amount(answer.target,answer.request.quantity)} × ${label(answer.target)}`;
       const issues = answerIssues(answer,settings.oreLevel);
       body = issues.length ? `<div class="ask-warning"><strong>Partial calculation</strong><p>${issues.map(escape).join(' ')}</p></div>` : '';
-      const usedMaterials = answer.usingMaterials.map(label).join(', ');
+      const usedMaterials = (answer.usingMaterials || []).map(label).join(', ');
       if (usedMaterials) body += `<p class="ask-caption">Using ${escape(usedMaterials)}</p>`;
-      if (answer.request.kind === 'ingredient') {
+      if (answer.plans) body += `<h3 class="ask-target-heading">To build</h3><ul class="ask-materials ask-targets">${answer.plans.map((plan,index)=>`<li>${icon(plan.target.ref)}<span class="name">${escape(label(plan.target))}${plan.usingMaterials.length ? `<small>Using ${escape(plan.usingMaterials.map(label).join(', '))}</small>` : ''}<button type="button" class="link-button" data-ask-open="${index}" aria-label="Open crafting plan for ${escape(amount(plan.target,plan.request.quantity)+' × '+label(plan.target))}">Open crafting plan</button></span><strong>${amount(plan.target,plan.request.quantity)}</strong></li>`).join('')}</ul><p class="ask-caption">Totals share inventory, reusable tools, and crafting leftovers across these items.</p>`;
+      if (answer.ingredient) {
         body += issues.length && !answer.count ? '<p class="ask-help">The recipe is incomplete, so I can’t determine this ingredient’s total.</p>'
           : `<p class="ask-count"><strong>${amount(answer.ingredient,answer.count)} × ${escape(label(answer.ingredient))}</strong><span>${issues.length ? 'Counted in the resolved branches; the final total may be higher.' : answer.count ? 'Needed with your current recipe choices.' : 'Not needed with your current recipes and inventory.'}</span></p>`;
       } else {
-        const tree = answer.views.ore.tree;
-        const directEmpty = tree.status === 'owned' ? 'Already covered by your inventory.' : 'No final crafting recipe available for this plan.';
-        const recipe = tree.recipe ? `<p class="ask-caption">${escape(tree.recipe.machine || tree.recipe.type)} · ${amount(tree.recipe.output,tree.recipe.output.count)} output per batch</p>${renderRecipeDiagram(catalog,tree.recipe,settings.layouts || {},tree)}<p class="ask-caption">${fmt(tree.runs)} batch${tree.runs === 1 ? '' : 'es'}${tree.extra ? ` · ${fmt(tree.extra)} extra output` : ''}</p>` : '';
-        body += `<div class="ask-breakdowns"><section><h3>Recipe ingredients</h3>${recipe}${answer.ingredients.length ? list(answer.ingredients,true) : `<p class="ask-help">${directEmpty}</p>`}</section><section><div class="ask-materials-heading"><h3>Total materials</h3><label class="ore-level"><input id="ask-ore-level" type="checkbox" data-ore-level="ask"${settings.oreLevel ? ' checked' : ''}> Ore Level</label></div>${view.materials.length ? list(view.materials) : '<p class="ask-help">No additional materials needed.</p>'}</section></div>`;
+        const recipes = answer.plans ? answer.plans.map(plan=>`<details class="ask-plan"><summary>${escape(amount(plan.target,plan.request.quantity)+' × '+label(plan.target))}</summary>${recipeIngredients(plan,settings)}</details>`).join('') : recipeIngredients(answer,settings);
+        body += `<div class="ask-breakdowns"><section><h3>Recipe ingredients</h3>${recipes}</section><section><div class="ask-materials-heading"><h3>${answer.plans ? 'Combined materials' : 'Total materials'}</h3><label class="ore-level"><input id="ask-ore-level" type="checkbox" data-ore-level="ask"${settings.oreLevel ? ' checked' : ''}> Ore Level</label></div>${view.materials.length ? list(view.materials) : '<p class="ask-help">No additional materials needed.</p>'}</section></div>`;
       }
       if (answer.inventoryUsed) body += '<p class="ask-caption">Your owned inventory is included. Recipe ingredients show the remaining crafting batches; totals account for what you already have.</p>';
-      body += '<button type="button" class="primary" data-ask-open>Open crafting plan</button>';
-      live.textContent = `${title}. ${usedMaterials ? `Using ${usedMaterials}. ` : ''}${issues.length ? 'Partial calculation. ' : ''}${answer.request.kind === 'ingredient' ? (issues.length && !answer.count ? 'Ingredient total unavailable.' : `${amount(answer.ingredient,answer.count)} ${label(answer.ingredient)} needed.`) : 'Recipe ingredients and total materials are ready.'}`;
+      if (!answer.plans) body += '<button type="button" class="primary" data-ask-open>Open crafting plan</button>';
+      live.textContent = `${title}. ${answer.plans ? answer.plans.map(plan=>`${amount(plan.target,plan.request.quantity)} ${label(plan.target)}`).join(', ')+'. ' : ''}${usedMaterials ? `Using ${usedMaterials}. ` : ''}${issues.length ? 'Partial calculation. ' : ''}${answer.ingredient ? (issues.length && !answer.count ? 'Ingredient total unavailable.' : `${amount(answer.ingredient,answer.count)} ${label(answer.ingredient)} needed.`) : 'Recipe ingredients and total materials are ready.'}`;
     } else if (result.status === 'list') {
       title = result.usesQuery ? `“${result.query}” used in “${result.usesQuery}”` : `Items matching “${result.query}”`;
       const count = result.items.length, shown = Math.min(count,listLimit);
@@ -98,11 +103,11 @@ export function mountAskMe({catalog, getSettings, openPlan, icon, materialDescri
     if (button.hasAttribute('data-ask-dismiss')) { panel.hidden = true;result = answer = null;live.textContent = '';input.focus(); }
     else if (button.hasAttribute('data-ask-choice') && result.status === 'choice') { selections[result.slot] = button.dataset.askChoice;submit(); }
     else if (button.hasAttribute('data-ask-more') && result.status === 'list') {const previous = listLimit;listLimit += 40;render();panel.querySelectorAll('.ask-catalog>li>button')[previous]?.focus({preventScroll:true});}
-    else if (button.hasAttribute('data-ask-open') && answer) {openPlan(questionPlan(answer));}
+    else if (button.hasAttribute('data-ask-open') && answer) {openPlan(questionPlan(answer,Number(button.dataset.askOpen || 0)));}
   });
   panel.addEventListener('submit', event => {
     if (event.target.id !== 'ask-count-form') return;
-    event.preventDefault();selections.quantity = Number(panel.querySelector('#ask-item-count').value);submit();
+    event.preventDefault();selections[result.slot || 'quantity'] = Number(panel.querySelector('#ask-item-count').value);submit();
   });
   form.querySelector('button').disabled = false;input.disabled = false;
   return {

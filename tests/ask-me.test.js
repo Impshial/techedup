@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { Catalog, calculateMaterialViews } from '../dist/planner.js';
+import { Catalog, calculateMaterialViews, calculateAllMaterialViews } from '../dist/planner.js';
 import { createAskMe, answerQuestion, answerIssues, questionPlan } from '../dist/ask-me.js';
 import { capturePage, createNavigation } from '../dist/navigation.js';
 
@@ -96,7 +96,6 @@ test('ingredient usage phrasing keeps material choices, ambiguity and quantity v
     'How many ME Basic Processors go into 0 ME 16k Storage?',
     'How many ME Basic Processors does -1 ME 16k Storage need?',
     'How many ME Basic Processors are used in 1.5 ME 16k Storage?',
-    'How many ME Basic Processors go into two ME 16k Storage and three ME Controllers?',
     'How many ME Basic Processors go into?',
     'How many go into one ME 16k Storage?',
     'How many ME Basic Processors does one ME 16k Storage?',
@@ -331,7 +330,7 @@ test('how-to questions default to one and scale recipe batches without changing 
     assert.deepEqual(answer.ingredients.map(row=>[row.stack.ref,row.count]),[['item:14:0',ore]]);
     assert.deepEqual(answerIssues(answer,false),[]);
   }
-  assert.equal(ask.interpret('How do I make 50 Pulverized Gold and 3 ME Controllers?').status,'error');
+  assert.equal(ready('How do I make 50 Pulverized Gold and 3 ME Controllers?').kind,'multi');
   assert.equal(ask.interpret('How do I power my base?').status,'error');
 });
 
@@ -352,7 +351,7 @@ test('ingredient-list questions recognize natural wording and calculate both bre
   assert.equal(answer.views.ore.tree.runs,50);
   assert.ok(answer.ingredients.length>0);
   assert.deepEqual(answer.views,calculateMaterialViews(catalog,s('item:5758:20'),50));
-  assert.equal(ask.interpret('What are the ingredients for 50 Basic Processor Assemblies and 2 ME Controllers?').status,'error');
+  assert.equal(ready('What are the ingredients for 50 Basic Processor Assemblies and 2 ME Controllers?').kind,'multi');
 });
 
 test('natural production questions resolve quantities and calculate the gold ore requirement',()=>{
@@ -378,7 +377,7 @@ test('natural production questions resolve quantities and calculate the gold ore
   assert.equal(ready('How much Minecraft Gold Ore will it take to get 51 Pulverized Gold?').quantity,51);
   const rounded=answerQuestion(catalog,ready('How much Minecraft Gold Ore is required to produce 51 Pulverized Gold?'));
   assert.equal(rounded.count,26);
-  assert.equal(ask.interpret('What do I need to get 50 Pulverized Gold and 2 ME Controllers?').status,'error');
+  assert.equal(ready('What do I need to get 50 Pulverized Gold and 2 ME Controllers?').kind,'multi');
 });
 
 test('item IDs and embedded or leading numbers survive quantity parsing',()=>{
@@ -415,8 +414,8 @@ test('stack requests use explicit catalog sizes or ask for an item count',()=>{
   assert.equal(ask.interpret('2 stacks of ME Controllers',{quantity:0}).status,'error');
 });
 
-test('invalid quantities, conditions, multiple builds and unsupported advice never guess',()=>{
-  for(const text of ['0 ME Controllers','-2 ME Controllers','1.5 ME Controllers','1,00 ME Controllers','1e3 ME Controllers','1000001 ME Controllers','one two ME Controllers','How do I power my base?', 'What about twice that?', '2 ME Controllers and 3 Furnaces','2 ME Controllers without copper',''])assert.equal(ask.interpret(text).status,'error',text);
+test('invalid quantities, conditions and unsupported advice never guess',()=>{
+  for(const text of ['0 ME Controllers','-2 ME Controllers','1.5 ME Controllers','1,00 ME Controllers','1e3 ME Controllers','1000001 ME Controllers','one two ME Controllers','How do I power my base?', 'What about twice that?', '2 ME Controllers without copper',''])assert.equal(ask.interpret(text).status,'error',text);
   assert.equal(ask.interpret('How many sticks for 3 unknownxyz?').status,'error');
 });
 
@@ -593,4 +592,130 @@ test('opening an answer keeps its quantity and Back restores the prior plan',()=
   const next={...previous,...questionPlan(answer),tab:'plan'};nav.visit(capturePage(next),'Basic Processor Assembly');
   assert.equal(history.state.view.quantity,36);assert.equal(history.state.view.tab,'plan');
   nav.back();assert.equal(restored.quantity,7);assert.equal(restored.ref,'item:280:0');assert.equal(restored.tab,'recipes');
+});
+
+test('desire phrases and plural buses resolve single and combined builds',()=>{
+  const refs=['item:743:1','item:743:0'];
+  for (const prefix of ['', 'I need ', 'I want ', "I'd like ", 'I’d like ', 'I would like ', 'I will need ', 'We need ', 'We want ', 'I require ', 'I need to craft ', 'I want to make ', 'I would like to build ', 'Could I have ', 'Please I need ', 'Can you tell me I need ']) {
+    const request=ready(`${prefix}3 me precision import buses and three me precision export buses`);
+    assert.equal(request.kind,'multi',prefix);
+    assert.deepEqual(request.requests.map(part=>part.targetRef),refs,prefix);
+    assert.deepEqual(request.requests.map(part=>part.quantity),[3,3],prefix);
+    assert.equal(ready(`${prefix}3 me precision import buses`).targetRef,refs[0],prefix);
+  }
+  const request=ready('3 me precision import bus and 3 me precision export bus');
+  const answer=answerQuestion(catalog,request);
+  assert.equal(answer.plans.length,2);assert.ok(answer.views.processed.materials.length);
+  assert.deepEqual(answer.views,calculateAllMaterialViews(catalog,request.requests.map(part=>({target:s(part.targetRef),quantity:part.quantity}))));
+  assert.equal(questionPlan(answer,0).ref,refs[0]);assert.equal(questionPlan(answer,1).ref,refs[1]);
+  assert.equal(questionPlan(answer,1).quantity,3);
+  const lists=ask.interpret('I need a list of planks');assert.equal(lists.status,'list');
+  assert.equal(ask.interpret('I want a list of planks excluding Chisel').status,'list');
+  assert.ok(ask.interpret('list buses').items.some(item=>item.ref===refs[0]));
+});
+
+test('and separates targets while preserving number words, catalog names, and numbered names',()=>{
+  const request=ready('I want a hundred and twenty-five ME Precision Import Buses and a thousand and six ME Precision Export Buses and one ME Controller');
+  assert.deepEqual(request.requests.map(part=>part.quantity),[125,1006,1]);
+  const c=new Catalog({version:3,ores:{},recipes:[],items:[
+    {ref:'blend',name:'Sand and Gravel'},{ref:'sand',name:'Sand'},
+    {ref:'gate',name:'And Gate'},{ref:'chip',name:'64 Bit Chip'},
+    {ref:'axe',name:'Axe'},{ref:'gas',name:'Gas'},{ref:'cactus',name:'Cactus'},{ref:'glass',name:'Glass'},
+  ]}),resolver=createAskMe(c);
+  const parse=text=>{const result=resolver.interpret(text);assert.equal(result.status,'ready',JSON.stringify(result));return result.request;};
+  assert.equal(parse('3 Sand and Gravel').targetRef,'blend');
+  assert.equal(parse('one hundred And Gates').targetRef,'gate');
+  assert.equal(parse('one hundred And Gates').quantity,100);
+  const combined=parse('3 Sand and Gravel and one hundred And Gates and two 64 Bit Chips');
+  assert.deepEqual(combined.requests.map(part=>[part.targetRef,part.quantity]),[['blend',3],['gate',100],['chip',2]]);
+  assert.deepEqual(parse('Sand and 64 Bit Chip').requests.map(part=>part.quantity),[1,1]);
+  for (const [name,ref] of [['Axes','axe'],['Gases','gas'],['Cacti','cactus'],['Cactuses','cactus'],['Glass','glass']]) assert.equal(parse(`3 ${name}`).targetRef,ref);
+  for (const question of ['3 ME Controllers and','3 ME Controllers and and 2 Chests','3 ME Controllers and zero Chests','3 ME Controllers and -1 Chests','3 ME Controllers and 1000001 Chests','3 ME Controllers and unknownxyz',Array(11).fill('1 ME Controller').join(' and ')]) {
+    assert.equal(ask.interpret(question).status,'error',question);
+  }
+});
+
+test('combined build choices and stack clarifications belong to the correct target',()=>{
+  const c=fixture([
+    {id:'a',output:s('panel@a'),inputs:[s('raw')]},{id:'b',output:s('panel@b'),inputs:[s('raw')]},
+    {id:'c',output:s('chip'),inputs:[s('raw')]},
+  ],{'panel@a':'Panel','panel@b':'Panel',chip:'Chip',raw:'Raw Material'});
+  const resolver=createAskMe(c),question='two stacks of Panels and three stacks of Panels';
+  let result=resolver.interpret(question);
+  assert.equal(result.slot,'plan:0:target');
+  result=resolver.interpret(question,{'plan:0:target':'panel@a'});
+  assert.equal(result.status,'quantity');assert.equal(result.slot,'plan:0:quantity');
+  result=resolver.interpret(question,{'plan:0:target':'panel@a','plan:0:quantity':32});
+  assert.equal(result.slot,'plan:1:target');
+  const selections={'plan:0:target':'panel@a','plan:0:quantity':32,'plan:1:target':'panel@b','plan:1:quantity':48};
+  result=resolver.interpret(question,selections);
+  assert.equal(result.status,'ready');assert.deepEqual(result.request.requests.map(part=>[part.targetRef,part.quantity]),[['panel@a',32],['panel@b',48]]);
+  assert.equal(resolver.interpret(question,{...selections,'plan:1:quantity':0}).status,'error');
+  c.item('chip').maxStackSize=16;
+  const known=resolver.interpret('2 stacks of Chips and 3 Chips');
+  assert.equal(known.status,'ready');assert.deepEqual(known.request.requests.map(part=>part.quantity),[32,3]);
+  const typo=ask.interpret('2 ME Precision Imoprt Buses and 3 ME Precision Export Buses');
+  assert.equal(typo.status,'choice');assert.equal(typo.slot,'plan:0:target');
+  assert.equal(ready('2 ME Precision Imoprt Buses and 3 ME Precision Export Buses',{'plan:0:target':'item:743:1'}).requests[1].targetRef,'item:743:0');
+});
+
+test('combined totals share inventory, batch leftovers, fluids, and reusable tools across targets',()=>{
+  const c=fixture([
+    {id:'a',output:s('a'),inputs:[s('stick',3),s('cast',1,{consume:false}),s('fluid:2',250)]},
+    {id:'b',output:s('b'),inputs:[s('stick',2),s('cast',1,{consume:false}),s('fluid:2',500)]},
+    {id:'stick',output:s('stick',4),inputs:[s('plank',2)]},
+    {id:'plank',output:s('plank',4),inputs:[s('log')]},
+    {id:'fluid',output:s('fluid:2',1000),inputs:[s('raw')]},
+  ],{a:'Alpha Machine',b:'Beta Machine',stick:'Stick',plank:'Wood Planks',cast:'Cast',log:'Log',raw:'Raw'});
+  for(const ref of ['log','cast','raw']) c.raw.add(ref);
+  const resolver=createAskMe(c),request=resolver.interpret('I need an Alpha Machine and a Beta Machine').request;
+  const settings={inventory:{stick:1,'fluid:2':100},recipes:{},members:{}},before=structuredClone(settings);
+  const answer=answerQuestion(c,request,settings),counts=view=>Object.fromEntries(view.materials.map(row=>[row.stack.ref,row.count]));
+  assert.deepEqual(counts(answer.views.ore),{log:1,cast:1,raw:1});
+  assert.deepEqual(counts(answer.views.processed),{plank:2,cast:1,'fluid:2':650});
+  assert.deepEqual(answer.views.ore.usedInventory.map(row=>[row.stack.ref,row.count]),[['stick',1],['fluid:2',100]]);
+  assert.equal(answer.plans[1].tree.children[0].reused,2);assert.equal(answer.plans[1].tree.children[1].retained,1);
+  assert.equal(answer.views.ore.leftovers.find(row=>row.stack.ref==='fluid:2').count,350);
+  assert.deepEqual(settings,before);assert.equal(answer.inventoryUsed,true);assert.deepEqual(answerIssues(answer,false),[]);
+  const ingredient=resolver.interpret('How many sticks go into one Alpha Machine and one Beta Machine').request;
+  const focused=answerQuestion(c,ingredient,settings);
+  assert.equal(focused.count,4);assert.equal(focused.inventoryUsed,true);assert.deepEqual(focused.issues,[]);
+  assert.deepEqual(questionPlan(focused,1).recipes,{});
+});
+
+test('combined plans reuse duplicate target batches and keep processing roots expanded',()=>{
+  const c=fixture([{id:'widgets',output:s('widget',4),inputs:[s('raw',2)]},
+    {id:'fluid',output:s('fluid:2',1000),inputs:[s('raw',3)]}],{widget:'Widget',raw:'Raw', 'fluid:2':'Water'});
+  c.raw.add('raw');
+  const resolver=createAskMe(c),result=answerQuestion(c,resolver.interpret('3 Widgets and 3 Widgets and 250 Water').request);
+  assert.equal(result.views.processed.materials.find(row=>row.stack.ref==='raw').count,7);
+  assert.equal(result.plans[1].tree.reused,1);assert.equal(result.plans[1].tree.runs,1);
+  assert.equal(result.views.processed.trees[2].status,'craft','a requested fluid remains a crafting target, not a processed supply boundary');
+  assert.equal(result.views.ore.leftovers.find(row=>row.stack.ref==='widget').count,2);
+  assert.equal(result.views.ore.leftovers.find(row=>row.stack.ref==='fluid:2').count,750);
+});
+
+test('each combined plan retains its material preferences without modifying shared settings',()=>{
+  const question='2 Chests using Oak Wood and 3 Chests using Birch Wood';
+  const request=ready(question);
+  assert.deepEqual(request.requests.map(part=>part.usingRef),['item:17:0','item:17:2']);
+  const settings={members:{'ore:plankWood':'item:5:1'},inventory:{'item:5:0':2},recipes:{}},before=structuredClone(settings);
+  const answer=answerQuestion(catalog,request,settings);
+  const materials=Object.fromEntries(answer.views.processed.materials.map(row=>[row.stack.ref,row.count]));
+  assert.equal(materials['item:5:0'],14);assert.equal(materials['item:5:2'],24);
+  assert.equal(questionPlan(answer,0).members['ore:plankWood'],'item:5:0');
+  assert.equal(questionPlan(answer,1).members['ore:plankWood'],'item:5:2');
+  assert.deepEqual(settings,before);
+  assert.equal(ask.interpret('2 Chests using Oak Wood and Birch Wood').status,'error','material alternatives still require or');
+  const alternatives=ready('2 Chests using oak or birch and 3 ME Controllers');
+  assert.ok(alternatives.requests[0].usingRefs.length>1);
+});
+
+test('unresolved combined branches remain visible and never become a definite zero',()=>{
+  const c=fixture([{id:'a',output:s('a'),inputs:[s('missing')]},{id:'b',output:s('b'),inputs:[s('raw')]}],{a:'Alpha',b:'Beta',raw:'Raw',missing:'Missing'});
+  c.raw.add('raw');
+  const resolver=createAskMe(c),answer=answerQuestion(c,resolver.interpret('How many Beta go into 1 Alpha and 2 Raw').request);
+  assert.equal(answer.count,0);assert.ok(answerIssues(answer,false).length);
+  const general=answerQuestion(c,resolver.interpret('1 Alpha and 2 Beta').request);
+  assert.ok(answerIssues(general,true).length);assert.ok(answerIssues(general,false).length);
 });

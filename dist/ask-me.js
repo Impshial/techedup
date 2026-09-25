@@ -1,4 +1,4 @@
-import { calculate, calculateMaterialViews, key } from './planner.js?v=8';
+import { calculate, calculateMaterialViews, calculateAll, calculateAllMaterialViews, key } from './planner.js?v=9';
 import { createCatalogFilters } from './ask-filters.js?v=1';
 import { createRecipeUsageSearch } from './recipe-usage.js?v=1';
 
@@ -9,11 +9,13 @@ const numbers = new Map(numberNames.map((name, value) => [name, value]));
 for (const [i, name] of 'twenty thirty forty fifty sixty seventy eighty ninety'.split(' ').entries()) numbers.set(name, (i + 2) * 10);
 const numericWords = new Set([...numbers.keys(), 'hundred', 'thousand', 'million', 'and']);
 const clean = text => String(text).trim().replace(/\s+/g, ' ');
-const singular = word => ({leaves:'leaf', knives:'knife'}[word] || (word.endsWith('ies') ? word.slice(0,-3)+'y' : /(?:ches|shes|xes|zes|sses)$/.test(word) ? word.slice(0,-2) : /[^s]s$/.test(word) ? word.slice(0,-1) : word));
+const singular = word => ({buses:'bus',busses:'bus',gas:'gas',gases:'gas',statuses:'status',cactuses:'cactus',cacti:'cactus',axes:'axe',leaves:'leaf',knives:'knife',wolves:'wolf',shelves:'shelf',loaves:'loaf',potatoes:'potato',tomatoes:'tomato'}[word] || (word.endsWith('ies') ? word.slice(0,-3)+'y' : /(?:ches|shes|xes|zes|sses)$/.test(word) ? word.slice(0,-2) : /s$/.test(word) && !/(?:ss|us|is)$/.test(word) ? word.slice(0,-1) : word));
 const normalize = text => clean(text.replace(/([a-z\d])([A-Z])/g, '$1 $2').toLowerCase().replace(/[^a-z0-9]+/g, ' ')).split(' ').map(singular).join(' ');
 const stripArticle = text => text.replace(/^(?:the|a|an)\s+/i, '');
 const error = message => ({status:'error', message, help});
 const recipeVerbs = 'make|craft|build|get|produce|obtain|create';
+const desirePrefix = new RegExp(`^(?:(?:i|we)(?:['’]d|\\s+would)\\s+like|(?:i|we)\\s+(?:(?:will|would)\\s+)?(?:need|want|require)|(?:can|could|may)\\s+i\\s+(?:have|get))\\s+(?:please\\s+)?(?:to\\s+(?:${recipeVerbs})\\s+)?`, 'i');
+const stripDesire = text => text.replace(/^please\s+/i, '').replace(desirePrefix, '');
 const eachItemAction = new RegExp(`\\b(?:${recipeVerbs}|for)\\s+`, 'gi');
 const ingredientTarget = new RegExp(`\\s+(?:${[
   '(?:(?:do|does|will|would|should|can|could)\\s+)?(?:go|goes)\\s+(?:into|in(?:\\s+to)?)',
@@ -91,7 +93,10 @@ function quantityAndName(text, exactItem) {
     const words = text.replace(/(?<=[a-z])-(?=[a-z])/gi, ' ').split(' ');
     let length = 0;
     while (length < words.length && (numericWords.has(words[length].toLowerCase())
-      || /^a$/i.test(words[length]) && /^(?:hundred|thousand|million)$/i.test(words[length+1] || ''))) length++;
+      || /^a$/i.test(words[length]) && /^(?:hundred|thousand|million)$/i.test(words[length+1] || ''))) {
+      if (length && exactItem(words.slice(length).join(' '))) break;
+      length++;
+    }
     if (length) {
       quantity = englishNumber(words.slice(0,length).map(word => /^a$/i.test(word) ? 'one' : word.toLowerCase()));
       remaining = words.slice(length).join(' ');
@@ -117,12 +122,32 @@ function ingredientQuestion(text, exactItem) {
   return splits.find(split => exactItem(split.ingredientText)) || splits[0];
 }
 
-function parseQuestion(question, exactItem) {
-  let text = clean(question).replace(/[?!.]+$/, '').replace(/,?\s+please$/i, '').replace(/^please\s+/i, '').trim();
+function splitTargets(text, exactItem) {
+  const describe = value => {
+    value = stripDesire(value);
+    const parsed = quantityAndName(value,exactItem);
+    if (parsed.status !== 'error' && exactItem(parsed.targetText)) return {exact:true};
+    const using = /\s+(?:using|from)\s+/i.exec(value);
+    return {parsed:using ? quantityAndName(value.slice(0,using.index),exactItem) : parsed, using};
+  };
+  if (describe(text).exact) return [text];
+  const boundaries = [...text.matchAll(/\s+and\s+/gi)].map(match => {
+    const left = text.slice(0,match.index), right = text.slice(match.index+match[0].length);
+    return {left,right,...describe(left)};
+  }).filter(part => (part.exact || part.parsed.status !== 'error')
+    // Without a new quantity, "using oak and birch" is a material clause.
+    && (!part.using || /^(?:[+-]?\d|(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million)\b)/i.test(stripDesire(part.right))));
+  const split = boundaries.filter(part=>part.exact).at(-1) || boundaries[0];
+  return split ? [split.left,...splitTargets(split.right,exactItem)] : [text];
+}
+
+function parseQuestion(question, exactItem, allowMultiple = true) {
+  let text = stripDesire(clean(question).replace(/[?!.]+$/, '').replace(/,?\s+please$/i, '').trim());
   if (!text || text.length > 400) return error(text ? 'Keep the question under 400 characters.' : 'Enter an item or recipe question.');
   const listQuery = catalogListQuery(text,exactItem);
   if (listQuery !== null) return listQuery;
   text = text.replace(/^(?:can|could|would|will)\s+you\s+(?:please\s+)?/i, '').replace(/^(?:tell|show|give)(?:\s+me)?\s+/i, '');
+  text = stripDesire(text);
   let targetText, ingredientText = null, usingText = null;
   if (/^how\s+many\s+(?:of\s+)?(?:each|every)\b/i.test(text)) {
     // Accept the repeated target and awkward wording in “each item in X ... make 36 X”.
@@ -139,7 +164,17 @@ function parseQuestion(question, exactItem) {
     if (general) targetText = general[1];
     else if (!/^(?:how|what|why|which|where|when|can|could|should|i)\b/i.test(text)) targetText = text;
   }
-  if (!targetText || (ingredientText !== null && !ingredientText)) return error('I can calculate one item’s recipe or ingredient quantities.');
+  if (!targetText || (ingredientText !== null && !ingredientText)) return error('Name the items to build or ask for an ingredient quantity.');
+  if (allowMultiple) {
+    const targets = splitTargets(targetText,exactItem);
+    if (targets.length > 10) return error('Ask for up to ten items in one build.');
+    if (targets.length > 1) {
+      const requests = targets.map(text => parseQuestion(ingredientText ? `How many ${ingredientText} for ${stripDesire(text)}` : text,exactItem,false));
+      const invalid = requests.find(request => request.status === 'error' || !['materials','ingredient'].includes(request.kind));
+      if (!invalid && requests.some(request=>request.kind !== requests[0].kind || request.ingredientText !== requests[0].ingredientText)) return error('Join build items with “and”, then ask ingredient questions about the whole build.');
+      return invalid ? (invalid.status === 'error' ? invalid : error('Join item names and quantities with “and”.')) : {kind:'multi',requests};
+    }
+  }
   const using = /^(.*?)\s+(?:using|from)(?:\s+(.*))?$/i.exec(targetText);
   if (using && !exactItem(targetText)) {
     targetText = using[1]; usingText = stripArticle((using[2] || '').trim());
@@ -154,7 +189,7 @@ function parseQuestion(question, exactItem) {
   if (exactItem(parsed.targetText)) instructions = instructions.replace(parsed.targetText,'');
   if (ingredientText && exactItem(ingredientText)) instructions = instructions.replace(ingredientText,'');
   if (/\b(?:using|except|without|instead|cheapest|best|twice|double|half|compare)\b/i.test(instructions)) return error('Ask about one build and its ingredients at a time.');
-  if (!exactItem(parsed.targetText) && /\b(?:and|plus)\b|[+;]/i.test(parsed.targetText)) return error('Ask about one build at a time.');
+  if (!exactItem(parsed.targetText) && /\b(?:and|plus)\b|[+;]/i.test(parsed.targetText)) return error('Name each item after “and”, with its quantity.');
   const usingTexts = usingText ? (exactItem(usingText) ? [usingText] : usingText.split(/\s+or\s+/i).map(stripArticle)) : [];
   if (usingTexts.some(value => !value.trim()) || /\bor$/i.test(usingText || '')) return error('Name a material on each side of “or”.');
   return {...parsed, ingredientText, usingText, usingTexts, kind:ingredientText ? 'ingredient' : 'materials'};
@@ -174,6 +209,19 @@ export function createAskMe(catalog) {
     const name = normalize(item.name), mod = normalize(item.mod || '');
     return {item, name, tokens:name.split(' '), aliases:new Set([item.ref, ...(item.names || [])].map(s => s.toLowerCase())), labels:new Set([name, `${mod} ${name}`, `${name} ${mod}`])};
   });
+  const labelIndex = new Map(), aliasIndex = new Map();
+  for (const entry of entries) for (const [index,values] of [[labelIndex,entry.labels],[aliasIndex,entry.aliases]]) {
+    for (const value of values) {
+      const items = index.get(value) || [];items.push(entry.item);index.set(value,items);
+    }
+  }
+  function exactCandidates(text) {
+    const literal = normalize(text), query = normalize(stripArticle(text)), id = text.trim().toLowerCase();
+    // Display names outrank hidden registry aliases ("redstone" is also a fluid alias).
+    return labelIndex.get(literal) || labelIndex.get(query) || aliasIndex.get(id)
+      || (/\s+(?:item|block)$/.test(query) ? labelIndex.get(query.replace(/\s+(?:item|block)$/,'')) : null) || [];
+  }
+  const exactItem = text => exactCandidates(text).length > 0;
   const extractFilters = createCatalogFilters(entries.map(entry=>entry.item.mod));
   const findRecipeUses = createRecipeUsageSearch(catalog);
   let listEntries;
@@ -202,13 +250,8 @@ export function createAskMe(catalog) {
     return {status:'list', query:query || 'all items', filters, items};
   }
   function candidates(text) {
-    const literal = normalize(text), query = normalize(stripArticle(text)), id = text.trim().toLowerCase();
-    // Display names outrank hidden registry aliases ("redstone" is also a fluid alias).
-    let exact = entries.filter(entry => entry.labels.has(literal));
-    if (!exact.length) exact = entries.filter(entry => entry.labels.has(query));
-    if (!exact.length) exact = entries.filter(entry => entry.aliases.has(id));
-    if (!exact.length && /\s+(?:item|block)$/.test(query)) exact = entries.filter(entry => entry.labels.has(query.replace(/\s+(?:item|block)$/, '')));
-    if (exact.length) return {exact:true, items:exact.map(entry => entry.item)};
+    const query = normalize(stripArticle(text)), exact = exactCandidates(text);
+    if (exact.length) return {exact:true, items:exact};
     const words = query.replace(/\s+(?:item|block)$/, '').split(' ').filter(Boolean);
     if (!words.length) return {exact:false, items:[]};
     const scored = [];
@@ -247,6 +290,44 @@ export function createAskMe(catalog) {
     if (result.relationships) result.relationships = Object.fromEntries(result.items.map(item=>[item.ref,result.relationships[item.ref]]));
     return result;
   }
+  function resolveRequest(request, selections, settings) {
+    for (const slot of ['target', ...(request.kind === 'ingredient' ? ['ingredient'] : [])]) {
+      const text = request[slot+'Text'], found = candidates(text);
+      if (slot === 'target' && (found.items.length > 1 || !found.exact)) found.items = found.items.filter(item => catalog.forItem(item.ref).length);
+      const label = slot === 'target' ? 'item' : 'ingredient';
+      const selected = found.items.find(item => item.ref === selections[slot]);
+      if (selected || found.exact && found.items.length === 1) request[slot+'Ref'] = (selected || found.items[0]).ref;
+      else if (found.items.length) return {status:'choice', slot, text, choices:found.items.slice(0,5), more:found.items.length>5, message:`Which ${label} did you mean?`};
+      else return error(`No matching ${label} for “${text}”. Try its full name or item ID.`);
+    }
+    if (request.usingTexts.length) {
+      const refs = [], scope = materialChoiceScope(catalog,questionTarget(catalog,request.targetRef),settings);
+      for (const [index,text] of request.usingTexts.entries()) {
+        const slot = request.usingTexts.length === 1 ? 'using' : `using:${index}`, found = candidates(text);
+        const relevant = found.items.filter(item => scope.has(item.ref));
+        const choices = relevant.length ? relevant : found.items;
+        const literal = found.exact ? choices : choices.filter(item => found.literalItems?.includes(item));
+        const selected = choices.find(item => item.ref === selections[slot]);
+        if (selected) refs.push(selected.ref);
+        else if (request.usingTexts.length > 1 && literal.length) {
+          // "or" permits the named sets, e.g. oak or birch. Typos still need confirmation.
+          refs.push(...literal.map(item => item.ref));
+        } else if (found.exact && choices.length === 1) refs.push(choices[0].ref);
+        else if (choices.length) return {status:'choice', slot, text, choices:choices.slice(0,5), more:choices.length>5, message:`Which material did you mean by “${text}”?`};
+        else return error(`No matching material for “${text}”. Try its full name or item ID.`);
+      }
+      request.usingRefs = [...new Set(refs)];
+      if (request.usingRefs.length === 1) request.usingRef = request.usingRefs[0];
+    }
+    if (request.unit === 'stacks') {
+      const item = catalog.item(request.targetRef), size = item.maxStackSize;
+      if (selections.quantity !== undefined) request.quantity = selections.quantity;
+      else if (Number.isSafeInteger(size) && size > 0) request.quantity *= size;
+      else return {status:'quantity', message:`The stack size for ${item.name} isn’t in the catalog. Enter the number of items.`, targetRef:item.ref};
+    }
+    if (!Number.isSafeInteger(request.quantity) || request.quantity < 1 || request.quantity > 1000000) return error(invalidQuantity);
+    return {status:'ready', request};
+  }
   return {
     interpret(question, selections = {}, settings = {}) {
       if (clean(question).length > 400) return error('Keep the question under 400 characters.');
@@ -254,7 +335,7 @@ export function createAskMe(catalog) {
       const usage = usageSeparator.exec(question);
       if (usage) {
         const source = extractFilters(question.slice(0,usage.index));
-        const request = parseQuestion(source.text, text=>candidates(text).exact);
+        const request = parseQuestion(source.text, exactItem);
         const recipeQuestion = request.limit == null && /^(?:what|which)\b/i.test(source.text)
           && /^(?:ingredients|materials|items)$/i.test(request.targetText || '') && /\b(?:needed|required)\b/i.test(usage[0]);
         if (request.kind === 'list' && !recipeQuestion) {
@@ -267,49 +348,25 @@ export function createAskMe(catalog) {
       }
       const filtered = extractFilters(question);
       if (filtered.active) {
-        const request = parseQuestion(filtered.text, text => candidates(text).exact);
+        const request = parseQuestion(filtered.text, exactItem);
         if (request.kind === 'list') return filtered.message ? error(filtered.message) : listAnswer(request,filtered.filters);
         if (request.status === 'error') return request;
       }
-      const request = parseQuestion(question, text => candidates(text).exact);
+      const request = parseQuestion(question, exactItem);
       if (request.status === 'error') return request;
       if (request.kind === 'list') return listAnswer(request,filtered.filters);
-      for (const slot of ['target', ...(request.kind === 'ingredient' ? ['ingredient'] : [])]) {
-        const text = request[slot+'Text'], found = candidates(text);
-        if (slot === 'target' && (found.items.length > 1 || !found.exact)) found.items = found.items.filter(item => catalog.forItem(item.ref).length);
-        const label = slot === 'target' ? 'item' : 'ingredient';
-        const selected = found.items.find(item => item.ref === selections[slot]);
-        if (selected || found.exact && found.items.length === 1) request[slot+'Ref'] = (selected || found.items[0]).ref;
-        else if (found.items.length) return {status:'choice', slot, text, choices:found.items.slice(0,5), more:found.items.length>5, message:`Which ${label} did you mean?`};
-        else return error(`No matching ${label} for “${text}”. Try its full name or item ID.`);
-      }
-      if (request.usingTexts.length) {
-        const refs = [], scope = materialChoiceScope(catalog,questionTarget(catalog,request.targetRef),settings);
-        for (const [index,text] of request.usingTexts.entries()) {
-          const slot = request.usingTexts.length === 1 ? 'using' : `using:${index}`, found = candidates(text);
-          const relevant = found.items.filter(item => scope.has(item.ref));
-          const choices = relevant.length ? relevant : found.items;
-          const literal = found.exact ? choices : choices.filter(item => found.literalItems?.includes(item));
-          const selected = choices.find(item => item.ref === selections[slot]);
-          if (selected) refs.push(selected.ref);
-          else if (request.usingTexts.length > 1 && literal.length) {
-            // "or" permits the named sets, e.g. oak or birch. Typos still need confirmation.
-            refs.push(...literal.map(item => item.ref));
-          } else if (found.exact && choices.length === 1) refs.push(choices[0].ref);
-          else if (choices.length) return {status:'choice', slot, text, choices:choices.slice(0,5), more:choices.length>5, message:`Which material did you mean by “${text}”?`};
-          else return error(`No matching material for “${text}”. Try its full name or item ID.`);
+      if (request.kind !== 'multi') return resolveRequest(request,selections,settings);
+      for (const [index,part] of request.requests.entries()) {
+        const prefix = `plan:${index}:`;
+        const selected = Object.fromEntries(Object.entries(selections).filter(([slot])=>slot.startsWith(prefix)).map(([slot,value])=>[slot.slice(prefix.length),value]));
+        if (selections.ingredient) selected.ingredient = selections.ingredient;
+        const resolved = resolveRequest(part,selected,settings);
+        if (resolved.status !== 'ready') {
+          const slot = resolved.status === 'quantity' ? 'quantity' : resolved.slot;
+          return {...resolved,...(slot ? {slot:slot === 'ingredient' ? slot : prefix+slot} : {}),message:`For ${part.quantity} × ${part.targetText}: ${resolved.message}`};
         }
-        request.usingRefs = [...new Set(refs)];
-        if (request.usingRefs.length === 1) request.usingRef = request.usingRefs[0];
       }
-      if (request.unit === 'stacks') {
-        const item = catalog.item(request.targetRef), size = item.maxStackSize;
-        if (selections.quantity !== undefined) request.quantity = selections.quantity;
-        else if (Number.isSafeInteger(size) && size > 0) request.quantity *= size;
-        else return {status:'quantity', message:`The stack size for ${item.name} isn’t in the catalog. Enter the number of items.`, targetRef:item.ref};
-      }
-      if (!Number.isSafeInteger(request.quantity) || request.quantity < 1 || request.quantity > 1000000) return error(invalidQuantity);
-      return {status:'ready', request};
+      return {status:'ready',request};
     },
   };
 }
@@ -423,18 +480,44 @@ function applyMaterialChoice(catalog, target, materials, preferences) {
   throw new Error('This material choice could not be resolved. Choose a more specific recipe in the crafting plan.');
 }
 
-export function answerQuestion(catalog, request, settings = {}) {
+function prepareAnswer(catalog, request, settings) {
   const preferences = structuredClone({recipes:settings.recipes || {}, members:settings.members || {}, inventory:settings.inventory || {}});
   const target = questionTarget(catalog, request.targetRef);
   const requestedMaterials = (request.usingRefs || (request.usingRef ? [request.usingRef] : [])).map(ref => questionTarget(catalog,ref));
   const usingMaterials = requestedMaterials.length ? applyMaterialChoice(catalog,target,requestedMaterials,preferences) : [];
-  const views = calculateMaterialViews(catalog, target, request.quantity, preferences);
-  const tree = views.ore.tree, ingredients = new Map();
+  return {request,target,preferences,usingMaterials};
+}
+
+function directIngredients(tree) {
+  const ingredients = new Map();
   for (const node of tree.children) {
     const id = key(node.stack), row = ingredients.get(id) || {stack:node.stack, count:0, reusable:false};
     row.count += node.wanted; row.reusable ||= !!node.reusable; ingredients.set(id,row);
   }
-  const answer = {request, target, preferences, views, usingMaterials, ingredients:[...ingredients.values()], inventoryUsed:views.ore.usedInventory.length>0 || views.processed.usedInventory.length>0};
+  return [...ingredients.values()];
+}
+
+export function answerQuestion(catalog, request, settings = {}) {
+  if (request.kind === 'multi') {
+    const plans = request.requests.map(part=>prepareAnswer(catalog,part,settings));
+    const targets = plans.map(plan=>({...plan,quantity:plan.request.quantity}));
+    const views = calculateAllMaterialViews(catalog,targets,settings);
+    for (const [index,plan] of plans.entries()) {
+      plan.tree = views.ore.trees[index];plan.ingredients = directIngredients(plan.tree);
+    }
+    const answer = {request,plans,views,inventoryUsed:views.ore.usedInventory.length>0 || views.processed.usedInventory.length>0};
+    if (plans[0].request.kind === 'ingredient') {
+      const ingredient = questionTarget(catalog,plans[0].request.ingredientRef);
+      const focused = calculateAll(catalog,targets.map(plan=>({...plan,preferences:{...plan.preferences,recipes:{...plan.preferences.recipes,[key(ingredient)]:'supply'}}})),settings);
+      answer.ingredient = ingredient;
+      answer.count = focused.materials.filter(row=>key(row.stack)===key(ingredient)).reduce((sum,row)=>sum+row.count,0);
+      answer.issues = problems(focused);answer.inventoryUsed = focused.usedInventory.length>0;
+    }
+    return answer;
+  }
+  const answer = prepareAnswer(catalog,request,settings), {target,preferences} = answer;
+  const views = calculateMaterialViews(catalog, target, request.quantity, preferences);
+  Object.assign(answer,{views,ingredients:directIngredients(views.ore.tree),inventoryUsed:views.ore.usedInventory.length>0 || views.processed.usedInventory.length>0});
   if (request.kind === 'ingredient') {
     const ingredient = questionTarget(catalog, request.ingredientRef);
     // This boundary belongs only to the answer, never to the user's recipe choices.
@@ -448,10 +531,11 @@ export function answerQuestion(catalog, request, settings = {}) {
 }
 
 export function answerIssues(answer, oreLevel) {
-  return answer.request.kind === 'ingredient' ? answer.issues : problems(answer.views[oreLevel ? 'ore' : 'processed']);
+  return answer.ingredient ? answer.issues : problems(answer.views[oreLevel ? 'ore' : 'processed']);
 }
 
 // Leave inventory shared, and keep the temporary ingredient boundary out of navigation.
-export function questionPlan(answer) {
+export function questionPlan(answer, index = 0) {
+  if (answer.plans) answer = answer.plans[index];
   return structuredClone({ref:answer.target.ref, target:answer.target, quantity:answer.request.quantity, recipes:answer.preferences.recipes, members:answer.preferences.members});
 }

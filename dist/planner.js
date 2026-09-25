@@ -128,9 +128,14 @@ export class Catalog {
 }
 
 export function calculate(catalog, target, amount, preferences = {}) {
-  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 1000000) throw new Error('Choose a whole number from 1 to 1,000,000.');
-  const choices = preferences.recipes || {};
-  const members = preferences.members || {};
+  const {trees, ...result} = calculateAll(catalog, [{target,quantity:amount}], preferences);
+  return {tree:trees[0],...result};
+}
+
+// Multiple targets share the same inventory, tools, and guaranteed leftovers.
+export function calculateAll(catalog, targets, preferences = {}) {
+  for (const {quantity} of targets) if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000000) throw new Error('Choose a whole number from 1 to 1,000,000.');
+  let choices, members;
   const inventory = new Map(Object.entries(catalog.canonicalInventory(preferences.inventory)));
   const extras = new Map(), totals = new Map(), warnings = new Set(), steps = [], used = new Map(), reusable = new Map(), durability = new Map();
   let nodes = 0;
@@ -224,14 +229,22 @@ export function calculate(catalog, target, amount, preferences = {}) {
     steps.push({ stack, recipe: recipe.id, runs: node.runs, produced: node.produced });
     return node;
   }
-  const tree = expand(catalog.canonicalStack(target), amount, new Set(), 0);
-  return { tree, materials: [...totals.values()].map(t => ({ ...t, reasons: [...t.reasons] })), warnings: [...warnings], steps,
+  const trees = targets.map(({target,quantity,preferences:selection = preferences}) => {
+    choices = selection.recipes || {};members = selection.members || {};
+    return expand(catalog.canonicalStack(target), quantity, new Set(), 0);
+  });
+  return { trees, materials: [...totals.values()].map(t => ({ ...t, reasons: [...t.reasons] })), warnings: [...warnings], steps,
     leftovers: [...extras].filter(([, count]) => count).map(([id, count]) => ({ stack: fromKey(id), count })),
     usedInventory: [...used].map(([id, count]) => ({ stack: fromKey(id), count })) };
 }
 
 export function calculateMaterialViews(catalog, target, amount, preferences = {}) {
-  const ore = calculate(catalog, target, amount, { ...preferences, materialLevel: 'ore' });
+  const views = calculateAllMaterialViews(catalog, [{target,quantity:amount}], preferences);
+  return Object.fromEntries(Object.entries(views).map(([level,{trees,...result}]) => [level,{tree:trees[0],...result}]));
+}
+
+export function calculateAllMaterialViews(catalog, targets, preferences = {}) {
+  const ore = calculateAll(catalog, targets, { ...preferences, materialLevel: 'ore' });
   const products = new Map(), extraOrigins = new Map();
   function takeOrigins(id, count) {
     const sources = new Set(), batches = extraOrigins.get(id) || [];
@@ -266,8 +279,8 @@ export function calculateMaterialViews(catalog, target, amount, preferences = {}
     }
     return sources;
   }
-  trace(ore.tree);
+  for (const tree of ore.trees) trace(tree);
   ore.materials = ore.materials.map(material => ({ ...material, products: [...(products.get(key(material.stack))?.values() || [])] }));
-  const processed = calculate(catalog, target, amount, { ...preferences, materialLevel: 'processed' });
+  const processed = calculateAll(catalog, targets, { ...preferences, materialLevel: 'processed' });
   return { ore, processed };
 }
