@@ -96,9 +96,57 @@ test('catalog-list requests accept natural variations and plurals',()=>{
   assert.ok(!sand.items.some(item=>/sandstone|sandwich/i.test(item.name)));
   assert.equal(ask.interpret('list all unknownxyz').items.length,0);
   assert.equal(ask.interpret('list '+ 'x'.repeat(400)).status,'error');
-  for (const text of ['list ingredients for a hundred ME Controllers','show me the materials for 100 ME Controllers','Could you show me what do I need for 100 ME Controllers?','Could you show me 100 ME Controllers?','show a hundred ME Controllers']) {
+  for (const text of ['list ingredients for a hundred ME Controllers','show me the materials for 100 ME Controllers','Could you show me what do I need for 100 ME Controllers?']) {
     assert.equal(ready(text).quantity,100,text);
   }
+});
+
+test('counted lists accept digits and words while crafting requests keep their quantities',()=>{
+  for (const [text,limit] of [['Show 5 ores',5],['list 10 planks',10],['Show me five ores',5],['List the top ten planks',10],['give me a list of a hundred planks',100],['show the first five kinds of planks',5]]) {
+    const result=ask.interpret(text);assert.equal(result.status,'list',text);
+    assert.equal(result.limit,limit);assert.equal(result.items.length,limit);assert.ok(result.total>=limit);
+  }
+  for (const text of ['show a hundred ME Controllers','Could you show me 100 ME Controllers?']) {
+    const result=ask.interpret(text);assert.equal(result.status,'list');assert.equal(result.limit,100);
+    assert.equal(result.total,1);assert.equal(result.items.length,1);
+  }
+  assert.equal(ready('how do I make a hundred ME Controllers').quantity,100);
+  for (const text of ['list 0 ores','show -5 ores','list 1.5 planks','show one two ores','list 1000001 ores','show two stacks of planks']) assert.equal(ask.interpret(text).status,'error',text);
+  const filtered=ask.interpret('Show ten Chisel planks excluding birch');
+  assert.equal(filtered.items.length,10);assert.ok(filtered.items.every(item=>item.mod==='Chisel' && !/birch/i.test(item.name)));
+  const fluids=ask.interpret('list 5 fluids');assert.equal(fluids.items.length,5);assert.ok(fluids.items.every(item=>item.ref.startsWith('fluid:')));
+});
+
+test('counted usage lists trace processing and show every matching output across mods',()=>{
+  const result=ask.interpret('Show 5 ores used in chests');
+  assert.equal(result.status,'list');assert.equal(result.limit,5);assert.equal(result.items.length,5);
+  assert.ok(result.total>=5);assert.equal(result.usesQuery,'chests');
+  const mods=new Set();
+  for (const item of result.items) {
+    assert.ok(result.relationships[item.ref].length>0);
+    for (const use of result.relationships[item.ref]) {
+      mods.add(use.item.mod);assert.ok(/chest/i.test(use.item.name));
+      assert.equal(use.steps[0].input.ref,item.ref);assert.equal(use.steps.at(-1).output.ref,use.item.ref);
+      for (let i=0;i<use.steps.length;i++) {
+        assert.ok(catalog.recipes.get(use.steps[i].recipeId).calculable);
+        if(i)assert.equal(use.steps[i-1].to,use.steps[i].from);
+      }
+    }
+  }
+  assert.ok(mods.size>1);
+  const gold=ask.interpret('list five Minecraft gold ores used to make Gold Chests from any mod');
+  assert.equal(gold.status,'list');assert.ok(gold.items.some(item=>item.ref==='item:14:0'));
+  const use=gold.relationships['item:14:0'].find(use=>use.item.ref==='item:831:1');
+  assert.ok(use);assert.ok(use.steps.some(step=>step.output.ref==='item:266:0'));
+  const pistons=ask.interpret('list ten ingots used for pistons');
+  assert.equal(pistons.status,'list');assert.ok(pistons.items.length>0 && pistons.items.length<=10);
+  assert.ok(Object.values(pistons.relationships).flat().every(use=>/piston/i.test(use.item.name)));
+  const scoped=ask.interpret('show five ores used in Applied Energistics chests');
+  assert.equal(scoped.status,'list');assert.ok(scoped.items.length>0);
+  assert.ok(Object.values(scoped.relationships).flat().every(use=>use.item.mod==='Applied Energistics'));
+  assert.deepEqual(scoped.filters.includeMods,[],'an output mod must not restrict the source material mod');
+  assert.equal(ask.interpret('show five ores used in').status,'error');
+  assert.equal(ask.interpret('show five ores used in unknownxyz').status,'error');
 });
 
 test('catalog lists include raw items and ore members, retain variants, and deduplicate aliases',()=>{

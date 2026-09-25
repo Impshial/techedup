@@ -1,4 +1,4 @@
-import { createAskMe, answerQuestion, answerIssues, questionPlan } from './ask-me.js?v=8';
+import { createAskMe, answerQuestion, answerIssues, questionPlan } from './ask-me.js?v=9';
 import { renderRecipeDiagram } from './recipe-view.js?v=9';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -16,6 +16,22 @@ export function mountAskMe({catalog, getSettings, openPlan, icon, materialDescri
       const description = direct ? (row.reusable ? 'Reusable tool' : '') : materialDescription(row);
       return `<li>${icon(row.stack.ref)}<span class="name">${escape(label(row.stack))}${description ? `<small>${escape(description)}</small>` : ''}</span><strong>${amount(row.stack,row.count)}</strong></li>`;
     }).join('')}</ul>`;
+  }
+  function filterLabel(filters) {
+    const excluded = [...filters.excludeMods,...filters.excludeTerms];
+    return [filters.includeMods.length ? `From: ${filters.includeMods.join(' or ')}.` : '', excluded.length ? `Excluding: ${excluded.join(', ')}.` : ''].filter(Boolean).join(' ');
+  }
+  function usageList(item) {
+    const uses = result.relationships?.[item.ref];
+    if (!uses) return '';
+    const rows = uses.map(use=>{
+      const path = [label(item),...use.steps.map(step=>{
+        const recipe = catalog.recipes.get(step.recipeId);
+        return `${label(step.output)} (${recipe?.machine || recipe?.type || 'Recipe'}${step.byproduct ? ', guaranteed by-product' : ''})`;
+      })].join(' → ');
+      return `<li><button type="button" class="link-button" data-item="${escape(use.item.ref)}">${escape(use.item.name)}</button><small>${escape(use.item.mod || '')} · ${escape(use.item.ref)}</small><p>${escape(path)}</p></li>`;
+    }).join('');
+    return `<details class="ask-uses"><summary>Used in ${fmt(uses.length)} matching item${uses.length === 1 ? '' : 's'}</summary><ul>${rows}</ul></details>`;
   }
   function render(focus = false) {
     const oreFocused = document.activeElement?.id === 'ask-ore-level';
@@ -40,16 +56,17 @@ export function mountAskMe({catalog, getSettings, openPlan, icon, materialDescri
       body += '<button type="button" class="primary" data-ask-open>Open crafting plan</button>';
       live.textContent = `${title}. ${usedMaterials ? `Using ${usedMaterials}. ` : ''}${issues.length ? 'Partial calculation. ' : ''}${answer.request.kind === 'ingredient' ? (issues.length && !answer.count ? 'Ingredient total unavailable.' : `${amount(answer.ingredient,answer.count)} ${label(answer.ingredient)} needed.`) : 'Recipe ingredients and total materials are ready.'}`;
     } else if (result.status === 'list') {
-      title = `Items matching “${result.query}”`;
+      title = result.usesQuery ? `“${result.query}” used in “${result.usesQuery}”` : `Items matching “${result.query}”`;
       const count = result.items.length, shown = Math.min(count,listLimit);
-      const filterText = [result.filters.includeMods.length ? `From: ${result.filters.includeMods.join(' or ')}.` : '', [...result.filters.excludeMods,...result.filters.excludeTerms].length ? `Excluding: ${[...result.filters.excludeMods,...result.filters.excludeTerms].join(', ')}.` : ''].filter(Boolean).join(' ');
-      body = count ? `<p class="ask-help">${fmt(count)} catalog item${count === 1 ? '' : 's'}. Select an item to open it.</p><ul class="ask-choices ask-catalog">${result.items.slice(0,listLimit).map(item => {
+      const filterText = filterLabel(result.filters), targetFilterText = result.targetFilters ? filterLabel(result.targetFilters) : '';
+      body = count ? `<p class="ask-help">${fmt(result.total)} matching item${result.total === 1 ? '' : 's'}${result.limit ? ` · requested ${fmt(result.limit)}` : ''}. Select an item to open it.</p>${result.usesQuery ? '<p class="ask-caption">Ranked by shortest recipe path, then number of matching outputs. Expand an item to see its uses and processing steps. Other recipe ingredients may also be needed.</p>' : ''}<ul class="ask-choices ask-catalog${result.usesQuery ? ' ask-usage-results' : ''}">${result.items.slice(0,listLimit).map(item => {
         const recipes = catalog.forItem(item.ref).length;
-        return `<li><button type="button" data-item="${escape(item.ref)}">${icon(item.ref)}<span>${escape(item.name)}<small>${escape(item.mod || 'Unknown mod')} · ${recipes ? `${fmt(recipes)} recipe${recipes === 1 ? '' : 's'}` : 'No imported recipe'}</small><small>${escape(item.ref)}</small></span></button></li>`;
-      }).join('')}</ul><p class="ask-caption">Showing ${fmt(shown)} of ${fmt(count)} items.</p>${shown < count ? '<button type="button" class="link-button" data-ask-more>Show more items</button>' : ''}`
-        : '<p class="ask-help">No matching catalog items. Try another name, material type, or ore group.</p>';
+        return `<li><button type="button" data-item="${escape(item.ref)}">${icon(item.ref)}<span>${escape(item.name)}<small>${escape(item.mod || 'Unknown mod')} · ${recipes ? `${fmt(recipes)} recipe${recipes === 1 ? '' : 's'}` : 'No imported recipe'}</small><small>${escape(item.ref)}</small></span></button>${usageList(item)}</li>`;
+      }).join('')}</ul><p class="ask-caption">Showing ${fmt(shown)} of ${fmt(result.total)} items${result.limit ? ` (limit ${fmt(result.limit)})` : ''}.</p>${shown < count ? '<button type="button" class="link-button" data-ask-more>Show more items</button>' : ''}`
+        : `<p class="ask-help">${result.usesQuery ? 'No matching recipe paths were found in the imported catalog.' : 'No matching catalog items.'} Try another name, material type, or ore group.</p>`;
+      if (targetFilterText) body = `<p class="ask-caption ask-target-filter-summary">Matching outputs — ${escape(targetFilterText)}</p>` + body;
       if (filterText) body = `<p class="ask-caption ask-filter-summary">${escape(filterText)}</p>` + body;
-      live.textContent = `${title}. ${filterText} ${fmt(count)} matching catalog items. ${count ? `Showing ${fmt(shown)}.` : ''}`;
+      live.textContent = `${title}. ${filterText} ${targetFilterText} ${fmt(result.total)} matching catalog items. ${count ? `Showing ${fmt(shown)}${result.limit ? `, limited to ${fmt(result.limit)}` : ''}.` : ''}`;
     } else if (result.status === 'choice') {
       body = `<p class="ask-help">${escape(result.message)}</p><div class="ask-choices">${result.choices.map(item => `<button type="button" data-ask-choice="${escape(item.ref)}">${icon(item.ref)}<span>${escape(item.name)}<small>${escape(item.mod || '')} · ${escape(item.ref)}</small></span></button>`).join('')}</div>${result.more ? '<p class="ask-caption">More matches exist. Use a fuller name or item ID to narrow it down.</p>' : ''}`;
       live.textContent = result.message;
@@ -80,7 +97,7 @@ export function mountAskMe({catalog, getSettings, openPlan, icon, materialDescri
     const button = event.target.closest('button'); if (!button) return;
     if (button.hasAttribute('data-ask-dismiss')) { panel.hidden = true;result = answer = null;live.textContent = '';input.focus(); }
     else if (button.hasAttribute('data-ask-choice') && result.status === 'choice') { selections[result.slot] = button.dataset.askChoice;submit(); }
-    else if (button.hasAttribute('data-ask-more') && result.status === 'list') {const previous = listLimit;listLimit += 40;render();panel.querySelectorAll('.ask-catalog button')[previous]?.focus({preventScroll:true});}
+    else if (button.hasAttribute('data-ask-more') && result.status === 'list') {const previous = listLimit;listLimit += 40;render();panel.querySelectorAll('.ask-catalog>li>button')[previous]?.focus({preventScroll:true});}
     else if (button.hasAttribute('data-ask-open') && answer) {openPlan(questionPlan(answer));}
   });
   panel.addEventListener('submit', event => {

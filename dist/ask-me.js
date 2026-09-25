@@ -1,5 +1,6 @@
 import { calculate, calculateMaterialViews, key } from './planner.js?v=8';
 import { createCatalogFilters } from './ask-filters.js?v=1';
+import { createRecipeUsageSearch } from './recipe-usage.js?v=1';
 
 const help = 'Try “What do I need for a hundred Basic Processor Assemblies?”, “How many sticks for 25 Template Carriages?” or “List all planks”.';
 const invalidQuantity = 'Choose a whole number from 1 to 1,000,000.';
@@ -18,22 +19,28 @@ const ingredientTarget = new RegExp(`\\s+(?:(?:would|does|will)\\s+it\\s+take(?:
 const generalQuestion = new RegExp(`^(?:what(?:\\s+(?:materials|ingredients|items))?\\s+(?:(?:do|will|would)\\s+i\\s+)?need\\s+(?:for|to\\s+(?:${recipeVerbs}))|(?:the\\s+)?(?:materials|ingredients|items)\\s+for|${recipeVerbs})\\s+(.+)$`, 'i');
 const ingredientListQuestion = new RegExp(`^(?:what|which)(?:\\s+(?:are|is))?\\s+(?:the\\s+)?(?:ingredients|materials|items)(?:\\s+(?:are\\s+)?(?:needed|required))?\\s+(?:for|to\\s+(?:${recipeVerbs}))\\s+(.+)$`, 'i');
 const howToQuestion = new RegExp(`^how\\s+(?:(?:do|can|would|should)\\s+i|to)\\s+(?:${recipeVerbs})\\s+(.+)$`, 'i');
+const usageSeparator = /\s+(?:(?:that|which)\s+)?(?:(?:are|is)\s+)?(?:used|needed|required)\s+(?:in|for|to\s+(?:make|craft|build|produce))\b\s*/i;
+const acrossMods = /\s+(?:from|in|across)\s+(?:any|all)\s+mods?\b/gi;
 
-function catalogListQuery(text) {
+function catalogListQuery(text, exactItem) {
   text = text.replace(/^(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|(?:can|could|may)\s+i\s+(?:please\s+)?(?:see|have|get)\s+|i(?:'d|\s+would)\s+like\s+|i\s+want\s+)/i, '').replace(/^please\s+/i, '').replace(/^tell\s+me\s+/i, '');
   const match = /^(?:(?:give|show)\s+(?:me\s+)?(?:(?:a|the)\s+)?list(?:\s+of)?|list(?:\s+out)?|(?:give|show)(?:\s+me)?|(?:a|the)\s+list\s+of)\s+(.+)$/i.exec(text)
     || /^(?:what|which)\s+(?:(?:are|is)\s+)?((?:(?:all|the|different|available)\s+)*(?:types?|kinds?|variet(?:y|ies)|variants?)\s+of\s+.+)$/i.exec(text)
     || /^(?:what|which)\s+(.+?)\s+(?:are\s+(?:there|available)|can\s+i\s+(?:find|use|get))(?:\s+.*)?$/i.exec(text)
     || /^(?:what|which)\s+are\s+(.+)$/i.exec(text);
   if (!match) return null;
-  const query = match[1].replace(/(?:\s+(?:are\s+)?(?:there|available))?(?:\s+in\s+(?:(?:this|the)\s+)?(?:pack|modpack|catalog|game))?$/i, '')
-    .replace(/^(?:(?:all|every|of|the|a|an|different|available)\s+|(?:types?|kinds?|variet(?:y|ies)|variants?|list)\s+of\s+)+/i, '').trim();
+  let query = match[1].replace(/(?:\s+(?:are\s+)?(?:there|available))?(?:\s+in\s+(?:(?:this|the)\s+)?(?:pack|modpack|catalog|game))?$/i, '')
+    .replace(/^(?:(?:all|every|of|the|different|available|top|first)\s+|(?:types?|kinds?|variet(?:y|ies)|variants?|list)\s+of\s+)+/i, '').trim();
   // Listing recipe ingredients is still a calculation, not a catalog search.
   if (/^(?:ingredients|materials|items)\s+(?:for|to|needed|required)\b|^(?:what|which|how)\b/i.test(query)) return null;
-  // Bare "show me 100 chests" keeps its recipe-question meaning.
-  if (/^(?:show|give)(?:\s+me)?\s+/i.test(text) && !/\blist\b/i.test(text)
-    && (/^[+-]?\d|^a\s+(?:hundred|thousand|million)\b/i.test(match[1]) || numericWords.has(match[1].split(' ')[0].toLowerCase()))) return null;
-  return query;
+  let limit = null;
+  if (!exactItem(query) && (/^[+-]?\d|^a\s+(?:hundred|thousand|million)\b/i.test(query) || numericWords.has(query.split(' ')[0].toLowerCase()))) {
+    const parsed = quantityAndName(query,exactItem);
+    if (parsed.status === 'error') return parsed;
+    if (parsed.unit !== 'items') return error('Use an item count for the number of list results, not stacks.');
+    limit = parsed.quantity;query = parsed.targetText.replace(/^(?:types?|kinds?|variet(?:y|ies))\s+of\s+/i,'');
+  }
+  return {kind:'list',targetText:stripArticle(query),limit};
 }
 
 function smallNumber(words) {
@@ -93,8 +100,8 @@ function quantityAndName(text, exactItem) {
 function parseQuestion(question, exactItem) {
   let text = clean(question).replace(/[?!.]+$/, '').replace(/,?\s+please$/i, '').replace(/^please\s+/i, '').trim();
   if (!text || text.length > 400) return error(text ? 'Keep the question under 400 characters.' : 'Enter an item or recipe question.');
-  const listQuery = catalogListQuery(text);
-  if (listQuery !== null) return {kind:'list', targetText:listQuery};
+  const listQuery = catalogListQuery(text,exactItem);
+  if (listQuery !== null) return listQuery;
   text = text.replace(/^(?:can|could|would|will)\s+you\s+(?:please\s+)?/i, '').replace(/^(?:tell|show|give)(?:\s+me)?\s+/i, '');
   let targetText, ingredientText = null, usingText = null;
   if (/^how\s+many\s+(?:of\s+)?(?:each|every)\b/i.test(text)) {
@@ -148,11 +155,12 @@ export function createAskMe(catalog) {
     return {item, name, tokens:name.split(' '), aliases:new Set([item.ref, ...(item.names || [])].map(s => s.toLowerCase())), labels:new Set([name, `${mod} ${name}`, `${name} ${mod}`])};
   });
   const extractFilters = createCatalogFilters(entries.map(entry=>entry.item.mod));
+  const findRecipeUses = createRecipeUsageSearch(catalog);
   let listEntries;
-  function catalogList(query, filters = {includeMods:[],excludeMods:[],excludeTerms:[]}) {
-    if (/^(?:all|items?|everything)$/i.test(query) && filters.includeMods.length) query = '';
+  function catalogList(query, filters = {includeMods:[],excludeMods:[],excludeTerms:[]}, allowAll = false) {
+    if (/^(?:all(?:\s+items?)?|items?|things|everything)$/i.test(query)) {query = '';allowAll = true;}
     const normalized = normalize(query), words = normalized.split(' ').filter(Boolean), id = query.toLowerCase();
-    if (!words.length && !filters.includeMods.length) return error('Name the items you want to list, such as planks or sands.');
+    if (!words.length && !filters.includeMods.length && !allowAll) return error('Name the items you want to list, such as planks or sands.');
     listEntries ||= entries.map(entry => {
       const roles = catalog.roles(entry.item.ref);
       return {...entry, searchTokens:new Set(normalize([entry.item.name,entry.item.mod || '',...roles.map(role=>role.replace(/^ore:/,''))].join(' ')).split(' ')), identifiers:new Set([entry.item.ref,...roles,...roles.map(role=>role.replace(/^ore:/,''))].map(value=>value.toLowerCase()))};
@@ -166,7 +174,9 @@ export function createAskMe(catalog) {
     const items = listEntries.filter(entry => (!filters.includeMods.length || filters.includeMods.includes(entry.item.mod))
       && !filters.excludeMods.includes(entry.item.mod)
       && !filters.excludeTerms.some(term=>termMatches(entry,term))
-      && (entry.identifiers.has(id) || words.every(word => entry.searchTokens.has(word))))
+      && (normalized === 'fluid' ? entry.item.kind === 'fluid' || entry.item.ref.startsWith('fluid:')
+        : normalized === 'block' ? entry.item.kind === 'block'
+        : entry.identifiers.has(id) || words.every(word => entry.searchTokens.has(word))))
       .sort((a,b) => Number(b.name===normalized)-Number(a.name===normalized) || a.tokens.length-b.tokens.length || a.item.name.localeCompare(b.item.name) || (a.item.mod || '').localeCompare(b.item.mod || '') || a.item.ref.localeCompare(b.item.ref))
       .map(entry => entry.item);
     return {status:'list', query:query || 'all items', filters, items};
@@ -195,17 +205,55 @@ export function createAskMe(catalog) {
     scored.sort((a,b) => a.score-b.score || a.item.name.localeCompare(b.item.name) || a.item.ref.localeCompare(b.item.ref));
     return {exact:false, items:scored.map(entry => entry.item), literalItems:scored.filter(entry => !entry.edits).map(entry => entry.item)};
   }
+  function listAnswer(request,filters,relation = null) {
+    if (relation && /^(?:items?|materials?|ingredients?)$/i.test(request.targetText)) request = {...request,targetText:''};
+    // Generic material queries in a usage search may consider the whole catalog.
+    const result = catalogList(request.targetText,filters,!!relation);
+    if (request.targetText === '' && relation) result.query = 'materials';
+    if (result.status !== 'list') return result;
+    if (relation) {
+      const target = catalogList(relation.text,relation.filters);
+      if (target.status !== 'list') return target;
+      const targets = target.items.filter(item=>catalog.forItem(item.ref).some(recipe=>recipe.calculable));
+      if (!targets.length) return error(`No matching items with usable recipes for “${relation.text}”. Try a fuller item name.`);
+      if (targets.length > 200 || result.items.length*targets.length > 500000) return error('That matches too many possible recipe relationships. Use a more specific material or destination item name.');
+      const matches = findRecipeUses(result.items,targets);
+      result.items = matches.map(match=>match.item);
+      result.relationships = Object.fromEntries(matches.map(match=>[match.item.ref,match.uses]));
+      result.usesQuery = relation.text;result.targetFilters = relation.filters;
+    }
+    result.total = result.items.length;result.limit = request.limit;
+    if (request.limit) result.items = result.items.slice(0,request.limit);
+    if (result.relationships) result.relationships = Object.fromEntries(result.items.map(item=>[item.ref,result.relationships[item.ref]]));
+    return result;
+  }
   return {
     interpret(question, selections = {}, settings = {}) {
       if (clean(question).length > 400) return error('Keep the question under 400 characters.');
+      question = String(question).replace(acrossMods,'');
+      const usage = usageSeparator.exec(question);
+      if (usage) {
+        const source = extractFilters(question.slice(0,usage.index));
+        const request = parseQuestion(source.text, text=>candidates(text).exact);
+        const recipeQuestion = request.limit == null && /^(?:what|which)\b/i.test(source.text)
+          && /^(?:ingredients|materials|items)$/i.test(request.targetText || '') && /\b(?:needed|required)\b/i.test(usage[0]);
+        if (request.kind === 'list' && !recipeQuestion) {
+          const target = extractFilters(question.slice(usage.index+usage[0].length));
+          if (source.message || target.message) return error(source.message || target.message);
+          const text = stripArticle(clean(target.text)).replace(/^(?:all|any)\s+/i,'') || (target.filters.includeMods.length ? 'all items' : '');
+          if (!text) return error('Name the items the listed materials should be used in.');
+          return listAnswer(request,source.filters,{text,filters:target.filters});
+        }
+      }
       const filtered = extractFilters(question);
       if (filtered.active) {
         const request = parseQuestion(filtered.text, text => candidates(text).exact);
-        if (request.kind === 'list') return filtered.message ? error(filtered.message) : catalogList(request.targetText,filtered.filters);
+        if (request.kind === 'list') return filtered.message ? error(filtered.message) : listAnswer(request,filtered.filters);
+        if (request.status === 'error') return request;
       }
       const request = parseQuestion(question, text => candidates(text).exact);
       if (request.status === 'error') return request;
-      if (request.kind === 'list') return catalogList(request.targetText);
+      if (request.kind === 'list') return listAnswer(request,filtered.filters);
       for (const slot of ['target', ...(request.kind === 'ingredient' ? ['ingredient'] : [])]) {
         const text = request[slot+'Text'], found = candidates(text);
         if (slot === 'target' && (found.items.length > 1 || !found.exact)) found.items = found.items.filter(item => catalog.forItem(item.ref).length);

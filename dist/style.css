@@ -90,3 +90,4 @@ dialog.build-dialog[open]{display:flex;flex-direction:column;padding:0;overflow:
 
 #ask-answer-title:focus{outline:none}
 .ask-catalog{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));padding:0;margin:0;list-style:none}.ask-catalog li{min-width:0}.ask-catalog button{width:100%;height:100%}
+.ask-usage-results{grid-template-columns:1fr}.ask-usage-results>li>button{height:auto}.ask-uses{padding:10px;border:1px solid var(--line);border-top:0;font-size:13px}.ask-uses summary{cursor:pointer;color:var(--blue)}.ask-uses ul{padding:0;list-style:none;margin:12px 0 0}.ask-uses li{padding:10px 0;border-top:1px solid var(--line)}.ask-uses button.link-button{display:inline;width:auto;height:auto;padding:0;border:0;background:transparent;font-size:13px;overflow-wrap:anywhere}.ask-uses p{margin:6px 0 0;font-size:12px;line-height:1.6;color:var(--muted);overflow-wrap:anywhere}
