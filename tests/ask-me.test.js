@@ -41,6 +41,81 @@ test('supported wording, plurals, English quantities and default one',()=>{
   assert.equal(ready('Could you tell me what do I need for 3 ME Controllers, please?').quantity,3);
 });
 
+test('numeric and English quantities agree, including a hundred and a thousand',()=>{
+  for (const [quantity,phrases] of [
+    [1,['1','one','a']], [21,['21','twenty-one','twenty one']],
+    [100,['100','one hundred','a hundred','A HUNDRED']],
+    [125,['125','one hundred and twenty-five','a hundred and twenty-five','a hundred twenty five']],
+    [1000,['1,000','one thousand','a thousand']],
+    [1100,['1100','one thousand one hundred','a thousand and a hundred']],
+    [1025,['1025','a thousand and twenty-five']],
+    [100000,['100000','a hundred thousand']], [1000000,['1000000','one million','a million']],
+  ]) for (const phrase of phrases) {
+    for (const question of [`${phrase} ME Controllers`,`What do I need for ${phrase} ME Controllers?`,`How many sticks for ${phrase} ME Controllers?`]) {
+      assert.equal(ready(question).quantity,quantity,question);
+    }
+  }
+  const numeric=answerQuestion(catalog,ready('How much Minecraft Gold Ore for 100 Pulverized Gold?'));
+  const words=answerQuestion(catalog,ready('How much Minecraft Gold Ore for a hundred Pulverized Gold?'));
+  assert.equal(words.count,50);assert.deepEqual(words.views,numeric.views);assert.deepEqual(words.ingredients,numeric.ingredients);
+  assert.equal(ready('a hundred Gold Ingots from Pulverized Gold').quantity,100);
+  const c=new Catalog({version:3,ores:{},recipes:[],items:[{ref:'pearl',name:'Pearl',maxStackSize:16},{ref:'named',name:'A Hundred Stars'}]});
+  const resolver=createAskMe(c);
+  assert.equal(resolver.interpret('a hundred stacks of Pearls').request.quantity,1600);
+  assert.equal(resolver.interpret('A Hundred Stars').request.quantity,1);
+  assert.equal(resolver.interpret('a million stacks of Pearls').status,'error');
+  assert.equal(ask.interpret('a hundred stacks of ME Controllers').status,'quantity');
+  for (const phrase of ['a million and one','two million','a hundred and','a thousand and','a hundred a hundred','a hundred thousand thousand','zero']) {
+    assert.equal(ask.interpret(`${phrase} ME Controllers`).status,'error',phrase);
+  }
+});
+
+test('catalog-list requests accept natural variations and plurals',()=>{
+  const expected=ask.interpret('give me a list of planks');
+  assert.equal(expected.status,'list');assert.ok(expected.items.length>5);
+  assert.ok(expected.items.some(item=>item.ref==='item:5:0'));
+  assert.ok(expected.items.some(item=>item.ref==='item:5:2'));
+  const refs=result=>result.items.map(item=>item.ref);
+  for (const text of [
+    'list all planks','List planks!','list out all the planks','give me all planks',
+    'show me planks','show a list of planks','A list of planks',
+    'Please give me a list of all the planks.', 'Could you please list all planks?',
+    'Can you show me all the planks?', 'Can I see a list of planks?',
+    "I'd like a list of planks", 'What types of planks are there?',
+    'Which kinds of planks are available in the pack?', 'What planks are available?',
+    'Which planks can I find in this modpack?', 'Could you tell me what types of planks are available?',
+    'list all available planks in the catalog, please', 'give me a list of plank',
+    'What are all the planks?', 'show me every kind of plank', 'I want a list of planks',
+  ]) {
+    const result=ask.interpret(text);
+    assert.equal(result.status,'list',text);assert.deepEqual(refs(result),refs(expected),text);
+  }
+  const sand=ask.interpret('list all sands');
+  assert.equal(sand.status,'list');assert.ok(sand.items.some(item=>item.ref==='item:12:0'));
+  assert.deepEqual(refs(sand),refs(ask.interpret('show me a list of sand')));
+  assert.ok(!sand.items.some(item=>/sandstone|sandwich/i.test(item.name)));
+  assert.equal(ask.interpret('list all unknownxyz').items.length,0);
+  assert.equal(ask.interpret('list '+ 'x'.repeat(400)).status,'error');
+  for (const text of ['list ingredients for a hundred ME Controllers','show me the materials for 100 ME Controllers','Could you show me what do I need for 100 ME Controllers?','Could you show me 100 ME Controllers?','show a hundred ME Controllers']) {
+    assert.equal(ready(text).quantity,100,text);
+  }
+});
+
+test('catalog lists include raw items and ore members, retain variants, and deduplicate aliases',()=>{
+  const c=new Catalog({version:3,aliases:{old:'oak'},ores:{'ore:plankWood':[s('oak'),s('odd')]},recipes:[],items:[
+    {ref:'oak',name:'Oak Wood Planks',mod:'Minecraft'}, {ref:'old',name:'Oak Wood Planks',mod:'Minecraft'},
+    {ref:'odd',name:'Wooden Board',mod:'Example'},
+    {ref:'birch@a',name:'Birch Planks',mod:'Example'}, {ref:'birch@b',name:'Birch Planks',mod:'Example'},
+    {ref:'sand',name:'Sand',mod:'Minecraft'}, {ref:'sandstone',name:'Sandstone',mod:'Minecraft'},
+  ]});
+  const resolver=createAskMe(c), refs=text=>resolver.interpret(text).items.map(item=>item.ref).sort();
+  assert.deepEqual(refs('list planks'),['birch@a','birch@b','oak','odd']);
+  assert.deepEqual(refs('list Minecraft planks'),['oak']);
+  assert.deepEqual(refs('show me all plankWood'),['oak','odd']);
+  assert.deepEqual(refs('list ore:plankWood'),['oak','odd']);
+  assert.deepEqual(refs('list sands'),['sand']);
+});
+
 test('how-to questions default to one and scale recipe batches without changing output yield',()=>{
   for(const [text,quantity,ore,extra] of [
     ['how do I make pulverized gold',1,1,1],

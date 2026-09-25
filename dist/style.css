@@ -89,3 +89,4 @@ dialog.build-dialog[open]{display:flex;flex-direction:column;padding:0;overflow:
 @media(max-width:780px){.topbar{min-height:73px}.ask-answer,#selected{scroll-margin-top:16px}.ask-breakdowns{grid-template-columns:1fr;gap:20px}.ask-answer-head,.ask-answer-body{padding:16px}}
 
 #ask-answer-title:focus{outline:none}
+.ask-catalog{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));padding:0;margin:0;list-style:none}.ask-catalog li{min-width:0}.ask-catalog button{width:100%;height:100%}

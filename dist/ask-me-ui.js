@@ -1,4 +1,4 @@
-import { createAskMe, answerQuestion, answerIssues, questionPlan } from './ask-me.js?v=6';
+import { createAskMe, answerQuestion, answerIssues, questionPlan } from './ask-me.js?v=7';
 import { renderRecipeDiagram } from './recipe-view.js?v=9';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -8,7 +8,7 @@ export function mountAskMe({catalog, getSettings, openPlan, icon, materialDescri
   const form = document.querySelector('#ask-form'), input = document.querySelector('#ask-question');
   const panel = document.querySelector('#ask-answer'), live = document.querySelector('#ask-status');
   const resolver = createAskMe(catalog);
-  let question = '', selections = {}, result = null, answer = null, preferenceKey = '';
+  let question = '', selections = {}, result = null, answer = null, preferenceKey = '', listLimit = 40;
   const label = stack => catalog.item(stack.ref).name;
   const amount = (stack,count) => fmt(count)+(stack.ref.startsWith('fluid:') ? ' mB' : '');
   function list(rows, direct = false) {
@@ -39,6 +39,15 @@ export function mountAskMe({catalog, getSettings, openPlan, icon, materialDescri
       if (answer.inventoryUsed) body += '<p class="ask-caption">Your owned inventory is included. Recipe ingredients show the remaining crafting batches; totals account for what you already have.</p>';
       body += '<button type="button" class="primary" data-ask-open>Open crafting plan</button>';
       live.textContent = `${title}. ${usedMaterials ? `Using ${usedMaterials}. ` : ''}${issues.length ? 'Partial calculation. ' : ''}${answer.request.kind === 'ingredient' ? (issues.length && !answer.count ? 'Ingredient total unavailable.' : `${amount(answer.ingredient,answer.count)} ${label(answer.ingredient)} needed.`) : 'Recipe ingredients and total materials are ready.'}`;
+    } else if (result.status === 'list') {
+      title = `Items matching “${result.query}”`;
+      const count = result.items.length, shown = Math.min(count,listLimit);
+      body = count ? `<p class="ask-help">${fmt(count)} catalog item${count === 1 ? '' : 's'}. Select an item to open it.</p><ul class="ask-choices ask-catalog">${result.items.slice(0,listLimit).map(item => {
+        const recipes = catalog.forItem(item.ref).length;
+        return `<li><button type="button" data-item="${escape(item.ref)}">${icon(item.ref)}<span>${escape(item.name)}<small>${escape(item.mod || 'Unknown mod')} · ${recipes ? `${fmt(recipes)} recipe${recipes === 1 ? '' : 's'}` : 'No imported recipe'}</small><small>${escape(item.ref)}</small></span></button></li>`;
+      }).join('')}</ul><p class="ask-caption">Showing ${fmt(shown)} of ${fmt(count)} items.</p>${shown < count ? '<button type="button" class="link-button" data-ask-more>Show more items</button>' : ''}`
+        : '<p class="ask-help">No matching catalog items. Try another name, material type, or ore group.</p>';
+      live.textContent = `${title}. ${fmt(count)} matching catalog items. ${count ? `Showing ${fmt(shown)}.` : ''}`;
     } else if (result.status === 'choice') {
       body = `<p class="ask-help">${escape(result.message)}</p><div class="ask-choices">${result.choices.map(item => `<button type="button" data-ask-choice="${escape(item.ref)}">${icon(item.ref)}<span>${escape(item.name)}<small>${escape(item.mod || '')} · ${escape(item.ref)}</small></span></button>`).join('')}</div>${result.more ? '<p class="ask-caption">More matches exist. Use a fuller name or item ID to narrow it down.</p>' : ''}`;
       live.textContent = result.message;
@@ -64,11 +73,12 @@ export function mountAskMe({catalog, getSettings, openPlan, icon, materialDescri
     catch (error) { result = {status:'error', message:error.message || 'This question could not be calculated.'}; answer = null; }
     render(true);
   }
-  form.addEventListener('submit', event => {event.preventDefault();question = input.value;selections = {};answer = null;submit();});
+  form.addEventListener('submit', event => {event.preventDefault();question = input.value;selections = {};answer = null;listLimit = 40;submit();});
   panel.addEventListener('click', event => {
     const button = event.target.closest('button'); if (!button) return;
     if (button.hasAttribute('data-ask-dismiss')) { panel.hidden = true;result = answer = null;live.textContent = '';input.focus(); }
     else if (button.hasAttribute('data-ask-choice') && result.status === 'choice') { selections[result.slot] = button.dataset.askChoice;submit(); }
+    else if (button.hasAttribute('data-ask-more') && result.status === 'list') {const previous = listLimit;listLimit += 40;render();panel.querySelectorAll('.ask-catalog button')[previous]?.focus({preventScroll:true});}
     else if (button.hasAttribute('data-ask-open') && answer) {openPlan(questionPlan(answer));}
   });
   panel.addEventListener('submit', event => {

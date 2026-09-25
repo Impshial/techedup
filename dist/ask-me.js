@@ -1,6 +1,6 @@
 import { calculate, calculateMaterialViews, key } from './planner.js?v=8';
 
-const help = 'Try “What do I need for 36 Basic Processor Assemblies?” or “How many sticks for 25 Template Carriages?”';
+const help = 'Try “What do I need for a hundred Basic Processor Assemblies?”, “How many sticks for 25 Template Carriages?” or “List all planks”.';
 const invalidQuantity = 'Choose a whole number from 1 to 1,000,000.';
 const numberNames = 'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen'.split(' ');
 const numbers = new Map(numberNames.map((name, value) => [name, value]));
@@ -14,9 +14,26 @@ const error = message => ({status:'error', message, help});
 const recipeVerbs = 'make|craft|build|get|produce|obtain|create';
 const eachItemAction = new RegExp(`\\b(?:${recipeVerbs}|for)\\s+`, 'gi');
 const ingredientTarget = new RegExp(`\\s+(?:(?:would|does|will)\\s+it\\s+take(?:\\s+to)?|(?:do|will|would)\\s+i\\s+need(?:\\s+(?:to|for))?|(?:is|are)\\s+(?:needed|required)(?:\\s+(?:to|for))?|to|for)\\s+(?:(?:${recipeVerbs})\\s+)?`, 'i');
-const generalQuestion = new RegExp(`^(?:what(?:\\s+(?:materials|ingredients|items))?\\s+(?:(?:do|will|would)\\s+i\\s+)?need\\s+(?:for|to\\s+(?:${recipeVerbs}))|(?:materials|ingredients)\\s+for|${recipeVerbs})\\s+(.+)$`, 'i');
+const generalQuestion = new RegExp(`^(?:what(?:\\s+(?:materials|ingredients|items))?\\s+(?:(?:do|will|would)\\s+i\\s+)?need\\s+(?:for|to\\s+(?:${recipeVerbs}))|(?:the\\s+)?(?:materials|ingredients|items)\\s+for|${recipeVerbs})\\s+(.+)$`, 'i');
 const ingredientListQuestion = new RegExp(`^(?:what|which)(?:\\s+(?:are|is))?\\s+(?:the\\s+)?(?:ingredients|materials|items)(?:\\s+(?:are\\s+)?(?:needed|required))?\\s+(?:for|to\\s+(?:${recipeVerbs}))\\s+(.+)$`, 'i');
 const howToQuestion = new RegExp(`^how\\s+(?:(?:do|can|would|should)\\s+i|to)\\s+(?:${recipeVerbs})\\s+(.+)$`, 'i');
+
+function catalogListQuery(text) {
+  text = text.replace(/^(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|(?:can|could|may)\s+i\s+(?:please\s+)?(?:see|have|get)\s+|i(?:'d|\s+would)\s+like\s+|i\s+want\s+)/i, '').replace(/^please\s+/i, '').replace(/^tell\s+me\s+/i, '');
+  const match = /^(?:(?:give|show)\s+(?:me\s+)?(?:(?:a|the)\s+)?list(?:\s+of)?|list(?:\s+out)?|(?:give|show)(?:\s+me)?|(?:a|the)\s+list\s+of)\s+(.+)$/i.exec(text)
+    || /^(?:what|which)\s+(?:(?:are|is)\s+)?((?:(?:all|the|different|available)\s+)*(?:types?|kinds?|variet(?:y|ies)|variants?)\s+of\s+.+)$/i.exec(text)
+    || /^(?:what|which)\s+(.+?)\s+(?:are\s+(?:there|available)|can\s+i\s+(?:find|use|get))(?:\s+.*)?$/i.exec(text)
+    || /^(?:what|which)\s+are\s+(.+)$/i.exec(text);
+  if (!match) return null;
+  const query = match[1].replace(/(?:\s+(?:are\s+)?(?:there|available))?(?:\s+in\s+(?:(?:this|the)\s+)?(?:pack|modpack|catalog|game))?$/i, '')
+    .replace(/^(?:(?:all|every|of|the|a|an|different|available)\s+|(?:types?|kinds?|variet(?:y|ies)|variants?|list)\s+of\s+)+/i, '').trim();
+  // Listing recipe ingredients is still a calculation, not a catalog search.
+  if (/^(?:ingredients|materials|items)\s+(?:for|to|needed|required)\b|^(?:what|which|how)\b/i.test(query)) return null;
+  // Bare "show me 100 chests" keeps its recipe-question meaning.
+  if (/^(?:show|give)(?:\s+me)?\s+/i.test(text) && !/\blist\b/i.test(text)
+    && (/^[+-]?\d|^a\s+(?:hundred|thousand|million)\b/i.test(match[1]) || numericWords.has(match[1].split(' ')[0].toLowerCase()))) return null;
+  return query;
+}
 
 function smallNumber(words) {
   if (!words.length) return 0;
@@ -24,7 +41,7 @@ function smallNumber(words) {
   if (words.length === 2 && numbers.get(words[0]) >= 20 && numbers.get(words[1]) > 0 && numbers.get(words[1]) < 10) return numbers.get(words[0]) + numbers.get(words[1]);
   const hundred = words.indexOf('hundred');
   if (hundred === 1 && numbers.get(words[0]) >= 1 && numbers.get(words[0]) <= 9) {
-    const tail = words.slice(2); if (tail[0] === 'and') tail.shift();
+    const tail = words.slice(2); if (tail[0] === 'and') {tail.shift();if (!tail.length) return null;}
     const rest = smallNumber(tail);
     if (rest !== null && rest < 100) return numbers.get(words[0]) * 100 + rest;
   }
@@ -38,15 +55,17 @@ function englishNumber(words) {
     const group = smallNumber(rest.slice(0,index));
     if (!group) return null;
     total += group * scale; rest = rest.slice(index + 1);
-    if (rest[0] === 'and') rest = rest.slice(1);
+    if (rest[0] === 'and') {rest = rest.slice(1);if (!rest.length) return null;}
   }
   const tail = smallNumber(rest);
   return tail === null ? null : total + tail;
 }
 function quantityAndName(text, exactItem) {
-  text = stripArticle(clean(text));
+  text = clean(text);
   // A number in an actual item name (or ID) must not become its quantity.
   if (exactItem(text)) return {quantity:1, targetText:text, unit:'items'};
+  // "a" is a multiplier in "a hundred", but an article in "a controller".
+  if (!/^a\s+(?:hundred|thousand|million)\b/i.test(text)) text = stripArticle(text);
   let quantity = 1, remaining = text;
   const digits = /^([+-]?\d[\d,]*(?:\.\d+)?(?:e[+-]?\d+)?)(?:\s+|$)/i.exec(text);
   if (digits) {
@@ -55,9 +74,10 @@ function quantityAndName(text, exactItem) {
   } else {
     const words = text.replace(/(?<=[a-z])-(?=[a-z])/gi, ' ').split(' ');
     let length = 0;
-    while (length < words.length && numericWords.has(words[length].toLowerCase())) length++;
+    while (length < words.length && (numericWords.has(words[length].toLowerCase())
+      || /^a$/i.test(words[length]) && /^(?:hundred|thousand|million)$/i.test(words[length+1] || ''))) length++;
     if (length) {
-      quantity = englishNumber(words.slice(0,length).map(word => word.toLowerCase()));
+      quantity = englishNumber(words.slice(0,length).map(word => /^a$/i.test(word) ? 'one' : word.toLowerCase()));
       remaining = words.slice(length).join(' ');
     }
   }
@@ -70,8 +90,11 @@ function quantityAndName(text, exactItem) {
 }
 
 function parseQuestion(question, exactItem) {
-  const text = clean(question).replace(/[?!.]+$/, '').replace(/,?\s+please$/i, '').replace(/^(?:please\s+|(?:can|could|would)\s+you\s+(?:please\s+)?(?:tell|show)\s+me\s+)/i, '').trim();
+  let text = clean(question).replace(/[?!.]+$/, '').replace(/,?\s+please$/i, '').replace(/^please\s+/i, '').trim();
   if (!text || text.length > 400) return error(text ? 'Keep the question under 400 characters.' : 'Enter an item or recipe question.');
+  const listQuery = catalogListQuery(text);
+  if (listQuery !== null) return {kind:'list', targetText:listQuery};
+  text = text.replace(/^(?:can|could|would|will)\s+you\s+(?:please\s+)?/i, '').replace(/^(?:tell|show|give)(?:\s+me)?\s+/i, '');
   let targetText, ingredientText = null, usingText = null;
   if (/^how\s+many\s+(?:of\s+)?(?:each|every)\b/i.test(text)) {
     // Accept the repeated target and awkward wording in “each item in X ... make 36 X”.
@@ -83,7 +106,8 @@ function parseQuestion(question, exactItem) {
     const split = ingredientTarget.exec(rest);
     if (split) { ingredientText = stripArticle(rest.slice(0,split.index)); targetText = rest.slice(split.index + split[0].length); }
   } else {
-    const general = generalQuestion.exec(text) || ingredientListQuestion.exec(text) || howToQuestion.exec(text);
+    const general = generalQuestion.exec(text) || ingredientListQuestion.exec(text) || howToQuestion.exec(text)
+      || /^(?:list|(?:show|give)(?:\s+me)?)\s+(?:the\s+)?(?:ingredients|materials|items)\s+for\s+(.+)$/i.exec(text);
     if (general) targetText = general[1];
     else if (!/^(?:how|what|why|which|where|when|can|could|should|i)\b/i.test(text)) targetText = text;
   }
@@ -122,10 +146,26 @@ export function createAskMe(catalog) {
     const name = normalize(item.name), mod = normalize(item.mod || '');
     return {item, name, tokens:name.split(' '), aliases:new Set([item.ref, ...(item.names || [])].map(s => s.toLowerCase())), labels:new Set([name, `${mod} ${name}`, `${name} ${mod}`])};
   });
+  let listEntries;
+  function catalogList(query) {
+    const normalized = normalize(query), words = normalized.split(' ').filter(Boolean), id = query.toLowerCase();
+    if (!words.length) return error('Name the items you want to list, such as planks or sands.');
+    listEntries ||= entries.map(entry => {
+      const roles = catalog.roles(entry.item.ref);
+      return {...entry, searchTokens:new Set(normalize([entry.item.name,entry.item.mod || '',...roles.map(role=>role.replace(/^ore:/,''))].join(' ')).split(' ')), identifiers:new Set([entry.item.ref,...roles,...roles.map(role=>role.replace(/^ore:/,''))].map(value=>value.toLowerCase()))};
+    });
+    // Whole words avoid matching sand to sandstone or sandwiches. Keep variants
+    // distinct and put the closest names ahead of related shapes and components.
+    const items = listEntries.filter(entry => entry.identifiers.has(id) || words.every(word => entry.searchTokens.has(word)))
+      .sort((a,b) => Number(b.name===normalized)-Number(a.name===normalized) || a.tokens.length-b.tokens.length || a.item.name.localeCompare(b.item.name) || (a.item.mod || '').localeCompare(b.item.mod || '') || a.item.ref.localeCompare(b.item.ref))
+      .map(entry => entry.item);
+    return {status:'list', query, items};
+  }
   function candidates(text) {
-    const query = normalize(stripArticle(text)), id = text.trim().toLowerCase();
+    const literal = normalize(text), query = normalize(stripArticle(text)), id = text.trim().toLowerCase();
     // Display names outrank hidden registry aliases ("redstone" is also a fluid alias).
-    let exact = entries.filter(entry => entry.labels.has(query));
+    let exact = entries.filter(entry => entry.labels.has(literal));
+    if (!exact.length) exact = entries.filter(entry => entry.labels.has(query));
     if (!exact.length) exact = entries.filter(entry => entry.aliases.has(id));
     if (!exact.length && /\s+(?:item|block)$/.test(query)) exact = entries.filter(entry => entry.labels.has(query.replace(/\s+(?:item|block)$/, '')));
     if (exact.length) return {exact:true, items:exact.map(entry => entry.item)};
@@ -149,6 +189,7 @@ export function createAskMe(catalog) {
     interpret(question, selections = {}, settings = {}) {
       const request = parseQuestion(question, text => candidates(text).exact);
       if (request.status === 'error') return request;
+      if (request.kind === 'list') return catalogList(request.targetText);
       for (const slot of ['target', ...(request.kind === 'ingredient' ? ['ingredient'] : [])]) {
         const text = request[slot+'Text'], found = candidates(text);
         if (slot === 'target' && (found.items.length > 1 || !found.exact)) found.items = found.items.filter(item => catalog.forItem(item.ref).length);
