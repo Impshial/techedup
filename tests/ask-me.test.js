@@ -41,6 +41,87 @@ test('supported wording, plurals, English quantities and default one',()=>{
   assert.equal(ready('Could you tell me what do I need for 3 ME Controllers, please?').quantity,3);
 });
 
+test('ingredient counts recognize go-into, usage and target-before-verb questions',()=>{
+  const example=ready('how many ME Basic Processor go into 1 ME 16k Storage');
+  assert.equal(example.kind,'ingredient');assert.equal(example.quantity,1);
+  assert.equal(example.ingredientRef,'item:5758:18');assert.equal(example.targetRef,'item:5757:1');
+  for (const clause of [
+    'go into one', 'go in one', 'go in to one', 'do go into one', 'will go into one',
+    'would go into one', 'should go into one', 'can go into one', 'could go into one',
+    'are used in one', 'used in one', 'are needed in one', 'are required for one',
+    'will be used in one', 'would be needed for one', 'should be required to craft one',
+    'are consumed to make one', 'are in one', 'in one', 'for one',
+    'do I need for one', 'should I use to make one', 'does it take to make one',
+    'would it take for one',
+  ]) {
+    const text=`How many ME Basic Processors ${clause} ME 16k Storage?`, request=ready(text);
+    assert.equal(request.ingredientRef,example.ingredientRef,text);
+    assert.equal(request.targetRef,example.targetRef,text);assert.equal(request.quantity,1,text);
+  }
+  for (const verb of ['need','require','use','take','consume','contain','take to make']) {
+    const text=`How many ME Basic Processors does one ME 16k Storage ${verb}?`, request=ready(text);
+    assert.equal(request.ingredientRef,example.ingredientRef,text);
+    assert.equal(request.targetRef,example.targetRef,text);assert.equal(request.quantity,1,text);
+  }
+  for (const text of [
+    'How much ME Basic Processor goes into a ME 16k Storage?',
+    'How many of the ME Basic Processors go into ME 16k Storage?',
+    'Could you tell me how many ME Basic Processors go into one ME 16k Storage, please?',
+  ]) {
+    const request=ready(text);assert.equal(request.ingredientRef,example.ingredientRef);
+    assert.equal(request.targetRef,example.targetRef);assert.equal(request.quantity,1);
+  }
+  const answer=answerQuestion(catalog,example);
+  assert.equal(answer.count,12,'include the processors used by storage components further down the tree');
+  assert.ok(answer.issues.length,'unresolved branches elsewhere in the live plan must still be reported');
+  const scaled=answerQuestion(catalog,ready('How many ME Basic Processors do two ME 16k Storage use?'));
+  assert.equal(scaled.count,24);assert.equal(questionPlan(scaled).quantity,2);
+});
+
+test('ingredient usage phrasing keeps material choices, ambiguity and quantity validation',()=>{
+  const target=ready('How much Minecraft Gold Ore goes into fifty Pulverized Gold?');
+  assert.equal(answerQuestion(catalog,target).count,25);
+  const forward=ready('How many sticks go into 50 Basic Processor Assemblies using Oak Wood?');
+  const reversed=ready('How many sticks do 50 Basic Processor Assemblies require using Oak Wood?');
+  assert.deepEqual(reversed,forward);
+  assert.equal(answerQuestion(catalog,reversed).count,100);
+  assert.equal(reversed.usingRef,'item:17:0');
+  const typo=ask.interpret('How many ME Basic Processors go into two ME 16k Stroage?');
+  assert.equal(typo.status,'choice');assert.equal(typo.slot,'target');
+  assert.equal(ready('How many ME Basic Processors go into two ME 16k Stroage?',{target:'item:5757:1'}).quantity,2);
+  const ambiguous=ask.interpret('How much gold ore is used in 50 Pulverized Gold?');
+  assert.equal(ambiguous.status,'choice');assert.equal(ambiguous.slot,'ingredient');
+  assert.equal(ask.interpret('How many ME Basic Processors go into two stacks of ME 16k Storage?').status,'quantity');
+  for (const text of [
+    'How many ME Basic Processors go into 0 ME 16k Storage?',
+    'How many ME Basic Processors does -1 ME 16k Storage need?',
+    'How many ME Basic Processors are used in 1.5 ME 16k Storage?',
+    'How many ME Basic Processors go into two ME 16k Storage and three ME Controllers?',
+    'How many ME Basic Processors go into?',
+    'How many go into one ME 16k Storage?',
+    'How many ME Basic Processors does one ME 16k Storage?',
+  ]) assert.equal(ask.interpret(text).status,'error',text);
+});
+
+test('ingredient usage wording is catalog-driven and keeps prepositions and numbers in names',()=>{
+  const c=fixture([
+    {id:'final',output:s('machine'),inputs:[s('chip',3),s('jewel',2)]},
+    {id:'chip',output:s('chip',4),inputs:[s('raw')]},
+  ],{machine:'64 Bit Machine',chip:'Chip for Machines',jewel:'Diamond in the Rough',raw:'Raw Material'});
+  c.raw.add('raw');c.raw.add('jewel');
+  const resolver=createAskMe(c);
+  for (const [question,ingredientRef,count] of [
+    ['How many Chips for Machines go into 64 Bit Machine?','chip',3],
+    ['How many Chips for Machines does 64 Bit Machine require?','chip',3],
+    ['How many Diamonds in the Rough go into two 64 Bit Machines?','jewel',4],
+    ['How many Diamonds in the Rough do two 64 Bit Machines use?','jewel',4],
+  ]) {
+    const result=resolver.interpret(question);assert.equal(result.status,'ready',question);
+    assert.equal(result.request.ingredientRef,ingredientRef);
+    const answer=answerQuestion(c,result.request);assert.equal(answer.count,count);assert.deepEqual(answer.issues,[]);
+  }
+});
+
 test('numeric and English quantities agree, including a hundred and a thousand',()=>{
   for (const [quantity,phrases] of [
     [1,['1','one','a']], [21,['21','twenty-one','twenty one']],

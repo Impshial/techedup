@@ -1,4 +1,4 @@
-import { createAskMe, answerQuestion, answerIssues, questionPlan } from './ask-me.js?v=9';
+import { createAskMe, answerQuestion, answerIssues, questionPlan } from './ask-me.js?v=10';
 import { renderRecipeDiagram } from './recipe-view.js?v=9';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

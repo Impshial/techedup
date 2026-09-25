@@ -15,7 +15,15 @@ const stripArticle = text => text.replace(/^(?:the|a|an)\s+/i, '');
 const error = message => ({status:'error', message, help});
 const recipeVerbs = 'make|craft|build|get|produce|obtain|create';
 const eachItemAction = new RegExp(`\\b(?:${recipeVerbs}|for)\\s+`, 'gi');
-const ingredientTarget = new RegExp(`\\s+(?:(?:would|does|will)\\s+it\\s+take(?:\\s+to)?|(?:do|will|would)\\s+i\\s+need(?:\\s+(?:to|for))?|(?:is|are)\\s+(?:needed|required)(?:\\s+(?:to|for))?|to|for)\\s+(?:(?:${recipeVerbs})\\s+)?`, 'i');
+const ingredientTarget = new RegExp(`\\s+(?:${[
+  '(?:(?:do|does|will|would|should|can|could)\\s+)?(?:go|goes)\\s+(?:into|in(?:\\s+to)?)',
+  '(?:(?:is|are)\\s+|(?:will|would|should|can|could|must)\\s+be\\s+)?(?:used|needed|required|consumed)\\s+(?:in|for|to)',
+  '(?:is|are)\\s+in',
+  '(?:would|does|will)\\s+it\\s+take(?:\\s+(?:to|for))?',
+  '(?:do|will|would|should|can|could|must)\\s+i\\s+(?:need|use)(?:\\s+(?:to|for|in))?',
+  'to|for|in|into',
+].join('|')})\\s+(?:(?:${recipeVerbs})\\s+)?`, 'gi');
+const ingredientRequirement = new RegExp(`^(.+?)\\s+(?:do|does|will|would|should|can|could|must)\\s+(.+?)\\s+(?:need|require|use|take|consume|contain)(?:\\s+to\\s+(?:${recipeVerbs}))?((?:\\s+(?:using|from)\\s+.*)?)$`, 'i');
 const generalQuestion = new RegExp(`^(?:what(?:\\s+(?:materials|ingredients|items))?\\s+(?:(?:do|will|would)\\s+i\\s+)?need\\s+(?:for|to\\s+(?:${recipeVerbs}))|(?:the\\s+)?(?:materials|ingredients|items)\\s+for|${recipeVerbs})\\s+(.+)$`, 'i');
 const ingredientListQuestion = new RegExp(`^(?:what|which)(?:\\s+(?:are|is))?\\s+(?:the\\s+)?(?:ingredients|materials|items)(?:\\s+(?:are\\s+)?(?:needed|required))?\\s+(?:for|to\\s+(?:${recipeVerbs}))\\s+(.+)$`, 'i');
 const howToQuestion = new RegExp(`^how\\s+(?:(?:do|can|would|should)\\s+i|to)\\s+(?:${recipeVerbs})\\s+(.+)$`, 'i');
@@ -97,6 +105,18 @@ function quantityAndName(text, exactItem) {
   return {quantity, targetText:remaining, unit:stack ? 'stacks' : 'items'};
 }
 
+function ingredientQuestion(text, exactItem) {
+  const splits = [...text.matchAll(ingredientTarget)].map(split => ({
+    ingredientText:text.slice(0,split.index), targetText:text.slice(split.index + split[0].length),
+  }));
+  // The target can also precede the verb: "How many chips does one machine use?"
+  const requirement = ingredientRequirement.exec(text);
+  if (requirement) splits.unshift({ingredientText:requirement[1],targetText:requirement[2]+requirement[3]});
+  for (const split of splits) split.ingredientText = stripArticle(split.ingredientText.replace(/^of\s+/i, ''));
+  // Prefer a complete catalog name when a name itself contains "in" or "for".
+  return splits.find(split => exactItem(split.ingredientText)) || splits[0];
+}
+
 function parseQuestion(question, exactItem) {
   let text = clean(question).replace(/[?!.]+$/, '').replace(/,?\s+please$/i, '').replace(/^please\s+/i, '').trim();
   if (!text || text.length > 400) return error(text ? 'Keep the question under 400 characters.' : 'Enter an item or recipe question.');
@@ -111,8 +131,8 @@ function parseQuestion(question, exactItem) {
     if (action) targetText = text.slice(action.index + action[0].length);
   } else if (/^how\s+(?:many|much)\s+/i.test(text)) {
     const rest = text.replace(/^how\s+(?:many|much)\s+/i, '');
-    const split = ingredientTarget.exec(rest);
-    if (split) { ingredientText = stripArticle(rest.slice(0,split.index)); targetText = rest.slice(split.index + split[0].length); }
+    const split = ingredientQuestion(rest,exactItem);
+    if (split) ({ingredientText,targetText} = split);
   } else {
     const general = generalQuestion.exec(text) || ingredientListQuestion.exec(text) || howToQuestion.exec(text)
       || /^(?:list|(?:show|give)(?:\s+me)?)\s+(?:the\s+)?(?:ingredients|materials|items)\s+for\s+(.+)$/i.exec(text);
